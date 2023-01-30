@@ -67,7 +67,7 @@ def process(system: System,
     processed = process(data, resolution, **kwargs)
     database.write(processed, file=data_file + '_{}m.csv'.format(resolution))
     for resolution in [15, 60]:
-        resampled = resample_data(processed, resolution)
+        resampled = resample_data(processed, resolution*60)
         database.write(resampled, file=data_file + '_{}m.csv'.format(resolution))
 
 

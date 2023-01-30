@@ -279,19 +279,17 @@ def _process_series(data: pd.Series, resolution: int = 1, fill_gaps: bool = Fals
     gaps = _locate_gaps(data, 1)
 
     # Extend index to have a regular frequency
-    minute = data.index[0].minute + (resolution - data.index[0].minute % resolution)
-    hour = data.index[0].hour
-    if minute > 59:
-        minute = 0
-        hour += 1
-    start = data.index[0].replace(hour=hour, minute=minute, second=0)
+    start_minute = data.index[0].minute
+    if start_minute > 0:
+        start_minute += resolution - start_minute % resolution
+    start_hour = data.index[0].hour
+    if start_minute > 59:
+        start_minute = 0
+        start_hour += 1
+    start = data.index[0].replace(hour=start_hour, minute=start_minute, second=0)
 
-    minute = data.index[-1].minute - (data.index[-1].minute % resolution)
-    hour = data.index[-1].hour
-    if minute > 59:
-        minute = 0
-        hour += 1
-    end = data.index[-1].replace(hour=hour, minute=minute, second=0)
+    end_minute = data.index[-1].minute - (data.index[-1].minute % resolution)
+    end = data.index[-1].replace(minute=end_minute, second=59)
 
     logger.debug('Processing data series "%s" from %s to %s', data.name, start, end)
     timezone = data.index.tzinfo
@@ -308,13 +306,13 @@ def _process_series(data: pd.Series, resolution: int = 1, fill_gaps: bool = Fals
     # Interpolate the values between the irregular data points and drop them afterwards,
     # to receive a regular index that is sure to be continuous, in order to later expose
     # remaining gaps in the data. Use the advanced Akima interpolator for best results
-    data = data.interpolate(method='akima')
+    data = data.interpolate(method='akima').bfill()
     data = _resample_series(data[data_name], resolution*60)
 
     if fill_gaps:
         data = _impute(data, gaps, **kwargs)
 
-    return data
+    return data[start:end]
 
 
 def _process_energy(energy: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
