@@ -1,6 +1,6 @@
-## TH-E Core
+## TH-E Data
 
-This repository provides a set of core functions for several projects of ISC Konstanz.  
+This repository provides a set of data processing functions for several projects of ISC Konstanz.  
 More detailed information and specifics about how to use the package will be added here in the future.
 
 
