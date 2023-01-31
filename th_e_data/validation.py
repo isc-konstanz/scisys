@@ -19,13 +19,13 @@ from th_e_core.tools import derive_power
 logger = logging.getLogger(__name__)
 
 
-def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plots', days: int = 7) -> None:
+def plot(data: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plots', days: int = 7) -> None:
     """
     Plot energy and power values to visually validate data series
 
     Parameters
     ----------
-    feed: pd.DataFrame
+    data: pd.DataFrame
         DataFrame to inspect and possibly fix measurement errors
     feed_name : str
         Subset of feed columns available for the Household
@@ -53,12 +53,12 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
     plt.rcParams.update({'figure.max_open_warning': 0})
     colors = plt.get_cmap('tab20c').colors
 
-    week_start = feed.index[0]
+    week_start = data.index[0]
     week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start -= timedelta(days=week_start.dayofweek)
-    while week_start <= feed.index[-1]:
+    while week_start <= data.index[-1]:
         week_end = week_start + timedelta(days=days)
-        week_data = feed[(feed.index >= week_start) & (feed.index < week_end)]
+        week_data = data[(data.index >= week_start) & (data.index < week_end)]
 
         errors = any('_error_' in column for column in week_data.columns) and \
                  not week_data.filter(regex="_error_").dropna(how='all').empty and \
@@ -83,26 +83,26 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
             colors_counter = 0
 
             # for feed_name in feeds_name:
-            feed_power = feed[feed_name.replace('energy', 'power')].dropna()
-            feed = week_data.filter(regex=feed_name).dropna(how='all')
-            feed.index = feed.index.tz_convert('Europe/Berlin')
+            data_power = data[feed_name.replace('energy', 'power')].dropna()
+            data = week_data.filter(regex=feed_name).dropna(how='all')
+            data.index = data.index.tz_convert('Europe/Berlin')
 
 
-            if feed_power.empty:
+            if data_power.empty:
                 continue
 
-            ax[0].plot(feed_power.index, feed_power, color=colors[colors_counter], label=feed_name)
+            ax[0].plot(data_power.index, data_power, color=colors[colors_counter], label=feed_name)
             ax[0].xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M:%S'))
             ax[0].set_ylabel('Power')
 
-            energy = feed[feed_name] - feed.loc[feed.index[0], feed_name]
-            ax[1].plot(feed.index, energy, color=colors[colors_counter])  # , linestyle='--')
+            energy = data[feed_name] - data.loc[data.index[0], feed_name]
+            ax[1].plot(data.index, energy, color=colors[colors_counter])  # , linestyle='--')
             ax[1].xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M:%S'))
             ax[1].set_ylabel('Energy')
 
             if errors:
                 def plot_error(index, error_name, marker):
-                    ax[index].plot(feed.index, feed[feed_name + error_name].replace(False, np.NaN).replace(True, -1),
+                    ax[index].plot(data.index, data[feed_name + error_name].replace(False, np.NaN).replace(True, -1),
                                    color=colors[colors_counter + 6],
                                    marker=marker,
                                    linestyle='None')
@@ -112,7 +112,7 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
                 plot_error(0, '_error_qnt', marker='x')
 
             if any('_interpolated' in column for column in week_data.columns):
-                ax[1].plot(feed.index, feed[feed_name + '_interpolated'].replace(True, -1),
+                ax[1].plot(data.index, data[feed_name + '_interpolated'].replace(True, -1),
                            color=colors[colors_counter], marker='o', linestyle='None')
 
             legend.append(Line2D([0], [0], color=colors[colors_counter]))
@@ -183,54 +183,54 @@ def read_fail_file():
     return adjustments
 
 
-def correct(feed, feed_name):
+def correct(data, data_name):
     adjustments = read_fail_file()
-    for items in adjustments[feed_name]:
+    for items in adjustments[data_name]:
         # read failures from file
-        feed = series_adjustment(items, feed, feed_name)
-    return feed
+        data = series_adjustment(items, data, data_name)
+    return data
 
 
-def write_csv(feed_frame, feed_name):
-    feed_frame.drop(feed_name + '_error_std', axis=1, inplace=True)
-    feed_frame.drop(feed_name + '_error_qnt', axis=1, inplace=True)
-    feed_frame.drop(feed_name + '_error_inc', axis=1, inplace=True)
+def write_csv(data_frame, data_name):
+    data_frame.drop(data_name + '_error_std', axis=1, inplace=True)
+    data_frame.drop(data_name + '_error_qnt', axis=1, inplace=True)
+    data_frame.drop(data_name + '_error_inc', axis=1, inplace=True)
 
-    start = feed_frame.index[0]
+    start = data_frame.index[0]
 
-    while start <= feed_frame.index[-1]:
+    while start <= data_frame.index[-1]:
         end = start + timedelta(days=365)
-        if end >= feed_frame.index[-1]:
-            data = feed_frame[start:]
+        if end >= data_frame.index[-1]:
+            data = data_frame[start:]
         else:
-            while end not in feed_frame.index[:]:
+            while end not in data_frame.index[:]:
                 end = end + timedelta(seconds=1)
-            data = feed_frame[start:end]
-        data.to_csv(f'feed_fixed_{feed_name}_{str(start.year)}.csv')
+            data = data_frame[start:end]
+        data.to_csv(f'feed_fixed_{data_name}_{str(start.year)}.csv')
         start = end
 
 
-def find(feed, feed_name, unit, plot_dir, plot_draw=False, override=False):
+def find(data, data_name, unit, plot_dir, plot_draw=False, override=False):
     adjustments = read_fail_file()
     # feed does not exist in fail_file
-    if adjustments is None or feed_name not in adjustments:
-        errors, feed_frame = find_failures(feed, feed_name, unit, plot_dir)
+    if adjustments is None or data_name not in adjustments:
+        errors, data_frame = find_failures(data, data_name, unit, plot_dir)
         if errors is not None:
             write_fail_file(errors)
-            feed = correct(feed, feed_name)
-        errors, feed_frame = find_failures(feed, feed_name, unit, plot_dir=plot_dir, plot_data=plot_draw)
+            data = correct(data, data_name)
+        errors, data_frame = find_failures(data, data_name, unit, plot_dir=plot_dir, plot_data=plot_draw)
 
         adjustments = read_fail_file()
-        adjustments.pop(feed_name)
+        adjustments.pop(data_name)
         delete_fail_file()
         write_fail_file(adjustments)
         write_fail_file(errors)
     else:
-        feed = correct(feed, feed_name)
-        errors, feed_frame = find_failures(feed, feed_name, unit, plot_dir, plot_data=plot_draw)
+        data = correct(data, data_name)
+        errors, data_frame = find_failures(data, data_name, unit, plot_dir, plot_data=plot_draw)
 
         if override:
-            adjustments.pop(feed_name)
+            adjustments.pop(data_name)
             delete_fail_file()
             write_fail_file(adjustments)
             write_fail_file(errors)
@@ -238,152 +238,153 @@ def find(feed, feed_name, unit, plot_dir, plot_draw=False, override=False):
             adjustments.update(errors)
             delete_fail_file()
             write_fail_file(adjustments)
-    return feed_frame
+    return data_frame
 
 
-def find_failures(feed, feed_name, unit, plot_dir, plot_data=False):
-    feed_frame = feed.to_frame()
+def find_failures(data, data_name, unit, plot_dir, plot_data=False):
+    data_frame = data.to_frame()
 
     # Find the rows where the energy values are not within +3 to -3 times the standard deviation.
-    error_std, nan_std_blocks = find_standard_deviation(feed)
+    error_std, nan_std_blocks = find_standard_deviation(data)
 
     nan_blocks = nan_std_blocks
-    feed_frame[feed_name + '_error_std'] = error_std
+    data_frame[data_name + '_error_std'] = error_std
     # Find the rows where the energy values is decreasing
     if unit == 'kWh':
-        error_inc, nan_inc_blocks = find_energy_increasing_failure(feed)
+        error_inc, nan_inc_blocks = find_energy_increasing_failure(data)
         nan_blocks = pd.concat([nan_inc_blocks, nan_blocks], ignore_index=True)
-        feed_frame[feed_name + '_error_inc'] = error_inc
+        data_frame[data_name + '_error_inc'] = error_inc
 
-    data_power = derive_power(feed).squeeze()
-    feed_frame.insert(1, data_power.name, data_power)
+    data_power = derive_power(data).squeeze()
+    data_frame.insert(1, data_power.name, data_power)
     # Notify about rows where the derived power is significantly larger than the standard deviation value
 
     if unit == 'W' or not data_power.empty:
         error_qnt, nan_qnt_blocks = find_quantile_error_power(data_power)
         nan_blocks = pd.concat([nan_qnt_blocks, nan_blocks], ignore_index=True)
-        feed_frame[feed_name + '_error_qnt'] = error_qnt
+        data_frame[data_name + '_error_qnt'] = error_qnt
 
     count = []
     i = 0
     while i < len(nan_blocks):
-        count.append(len(feed[nan_blocks['start_idx'][i]: nan_blocks['till_idx'][i]]))
+        count.append(len(data[nan_blocks['start_idx'][i]: nan_blocks['till_idx'][i]]))
         i += 1
 
     nan_blocks['count'] = count
-    errors = create_fail_file(nan_blocks, feed_name)
+    errors = create_fail_file(nan_blocks, data_name)
+
     if plot_data:
-        plot(feed_frame, str(feed_name), plot_dir=plot_dir)
+        plot(data_frame, str(data_name), plot_dir=plot_dir)
 
-    return errors, feed_frame
+    return errors, data_frame
 
 
-def find_quantile_error_power(feed):
+def find_quantile_error_power(data):
     # Notify about rows where the derived power is significantly larger than the standard deviation value
     nan_blocks = pd.DataFrame()
-    quantile = feed[feed > 0].quantile(.99)
-    error_qnt = (feed.abs() > 3 * quantile)
+    quantile = data[data > 0].quantile(.99)
+    error_qnt = (data.abs() > 3 * quantile)
 
     # first row of consecutive region is a True preceded by a False in tags
-    nan_blocks['start_idx'] = feed.index[error_qnt & ~error_qnt.shift(1).fillna(False)]
+    nan_blocks['start_idx'] = data.index[error_qnt & ~error_qnt.shift(1).fillna(False)]
 
     # last row of consecutive region is a False preceded by a True
-    nan_blocks['till_idx'] = feed.index[error_qnt & ~error_qnt.shift(-1).fillna(False)]
+    nan_blocks['till_idx'] = data.index[error_qnt & ~error_qnt.shift(-1).fillna(False)]
 
     return error_qnt, nan_blocks
 
 
-def find_energy_increasing_failure(feed):
-    error_inc = feed < feed.shift(1)
+def find_energy_increasing_failure(data):
+    error_inc = data < data.shift(1)
     nan_blocks = pd.DataFrame()
-    feed_size = len(feed.index)
+    feed_size = len(data.index)
 
     for time in error_inc.replace(False, np.NaN).dropna().index:
         # index of element i from error_inc
-        i = feed.index.get_loc(time)
+        i = data.index.get_loc(time)
         if 2 <= i < feed_size:
             error_flag = None
 
             # If a rounding or transmission error results in a single value being too big,
             # fix that single data point, else flag all decreasing values
-            if feed.iloc[i] >= feed.iloc[i - 2] and not error_inc.iloc[i - 2]:
+            if data.iloc[i] >= data.iloc[i - 2] and not error_inc.iloc[i - 2]:
                 error_inc.iloc[i] = False
                 error_inc.iloc[i - 1] = True
 
-            elif all(feed.iloc[i - 1] > feed.iloc[i:min(feed_size - 1, i + 10)]):
-                error_flag = feed.index[i]
+            elif all(data.iloc[i - 1] > data.iloc[i:min(feed_size - 1, i + 10)]):
+                error_flag = data.index[i]
 
             else:
                 j = i + 1
-                while j < feed_size and feed.iloc[i - 1] > feed.iloc[j]:
+                while j < feed_size and data.iloc[i - 1] > data.iloc[j]:
                     if error_flag is None and j - i > 10:
-                        error_flag = feed.index[i]
+                        error_flag = data.index[i]
 
                     error_inc.iloc[j] = True
                     j = j + 1
 
             if error_flag is not None:
                 logger.warning('Unusual behaviour at index %s for  %s', error_flag.strftime('%d.%m.%Y %H:%M'),
-                               feed.any())
+                               data.any())
 
     # first row of consecutive region is a True preceded by a False in tags
-    nan_blocks['start_idx'] = feed.index[error_inc & ~error_inc.shift(1).fillna(False)]
+    nan_blocks['start_idx'] = data.index[error_inc & ~error_inc.shift(1).fillna(False)]
 
     # last row of consecutive region is a False preceded by a True
-    nan_blocks['till_idx'] = feed.index[error_inc & ~error_inc.shift(-1).fillna(False)]
+    nan_blocks['till_idx'] = data.index[error_inc & ~error_inc.shift(-1).fillna(False)]
 
     return error_inc, nan_blocks
 
 
-def find_standard_deviation(feed):
-    error_std = np.abs(feed - feed.mean()) > 3 * feed.std()
+def find_standard_deviation(data):
+    error_std = np.abs(data - data.mean()) > 3 * data.std()
 
     # make another DF to hold info about each region
     nan_blocks = pd.DataFrame()
 
     # first row of consecutive region is a True preceded by a False in tags
-    nan_blocks['start_idx'] = feed.index[error_std & ~error_std.shift(1).fillna(False)]
+    nan_blocks['start_idx'] = data.index[error_std & ~error_std.shift(1).fillna(False)]
 
     # last row of consecutive region is a False preceded by a True
-    nan_blocks['till_idx'] = feed.index[error_std & ~error_std.shift(-1).fillna(False)]
+    nan_blocks['till_idx'] = data.index[error_std & ~error_std.shift(-1).fillna(False)]
 
     return error_std, nan_blocks
 
 
-def series_adjustment(adjustment, feed, feed_name):
+def series_adjustment(adjustment, data, data_name):
     if 'start' in adjustment:
 
         # delete timezone information
         start_without_tz = adjustment['start'].split('+')[0]
 
         adj_start = pytz.timezone('UTC').localize(datetime.strptime(start_without_tz, '%Y-%m-%d %H:%M:%S'))
-        if adj_start not in feed.index:
-            logger.warning("Skipping adjustment outside index for in %s at %s", feed_name, adj_start)
-            return feed
+        if adj_start not in data.index:
+            logger.warning("Skipping adjustment outside index for in %s at %s", data_name, adj_start)
+            return data
     else:
-        adj_start = feed.index[0]
+        adj_start = data.index[0]
 
     if 'end' in adjustment:
         end_without_tz = adjustment['end'].split('+')[0]
         adj_end = pytz.timezone('UTC').localize(datetime.strptime(end_without_tz, '%Y-%m-%d %H:%M:%S'))
     else:
-        adj_end = feed.index[-1]
+        adj_end = data.index[-1]
 
     # TODO implement other types (remove, fill, etc)
     adj_type = adjustment['type']
     if adj_type == 'remove':
         # A whole time period needs to be removed due to very unstable transmission
-        feed = feed.loc[(feed.index < adj_start) | (feed.index > adj_end)]
+        data = data.loc[(data.index < adj_start) | (data.index > adj_end)]
 
     elif adj_type == 'difference':
         # Changed smart meters, resulting in a lower counter value
-        adj_index = feed.index.get_loc(adj_start)
-        adj_delta = feed.iloc[adj_index - 1] - feed.iloc[adj_index]
-        feed.loc[adj_start:adj_end] = feed.loc[adj_start:adj_end] + adj_delta
+        adj_index = data.index.get_loc(adj_start)
+        adj_delta = data.iloc[adj_index - 1] - data.iloc[adj_index]
+        data.loc[adj_start:adj_end] = data.loc[adj_start:adj_end] + adj_delta
 
-    logger.debug("Adjusted %s values (%s) from %s to %s", feed_name, adj_type, adj_start, adj_end)
+    logger.debug("Adjusted %s values (%s) from %s to %s", data_name, adj_type, adj_start, adj_end)
 
-    return feed
+    return data
 
 
 def validate(household: dict,
@@ -415,17 +416,17 @@ def validate(household: dict,
     """
     logger.info('Validate %s series', household_data.name)
 
-    feed_name = household_data.name
-    unit = household[feed_name]['unit']
+    data_name = household_data.name
+    unit = household[data_name]['unit']
     feed = household_data.dropna()
 
-    feed_frame = find(feed=feed,
-                      feed_name=feed_name, unit=unit,
+    data_frame = find(data=feed,
+                      data_name=data_name, unit=unit,
                       plot_dir=image_dir, plot_draw=draw_plot, override=override)
 
-    feed_correct = correct(feed=feed,
-                           feed_name=feed_name)
+    data_correct = correct(data=feed,
+                           data_name=data_name)
 
-    feed_frame.drop(feed_name, axis=1, inplace=True)
-    feed_frame[feed_name] = feed_correct
-    write_csv(feed_frame, feed_name)
+    data_frame.drop(data_name, axis=1, inplace=True)
+    data_frame[data_name] = data_correct
+    write_csv(data_frame, data_name)
