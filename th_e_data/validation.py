@@ -60,13 +60,6 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
         week_end = week_start + timedelta(days=days)
         week_data = feed[(feed.index >= week_start) & (feed.index < week_end)]
 
-        # if end >= feed.index[-1]:
-        #     data_week = feed[start:]
-        # else:
-        #     while end not in feed.index:
-        #         end = end + timedelta(seconds=1)
-        #     data_week = feed[start:end]
-
         errors = any('_error_' in column for column in week_data.columns) and \
                  not week_data.filter(regex="_error_").dropna(how='all').empty and \
                  any(week_data.filter(regex="_error_").dropna(how='all'))
@@ -90,9 +83,10 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
             colors_counter = 0
 
             # for feed_name in feeds_name:
+            feed_power = feed[feed_name.replace('energy', 'power')].dropna()
             feed = week_data.filter(regex=feed_name).dropna(how='all')
             feed.index = feed.index.tz_convert('Europe/Berlin')
-            feed_power = feed[feed_name + '_power'].dropna()
+
 
             if feed_power.empty:
                 continue
@@ -156,8 +150,7 @@ def create_fail_file(nan_blocks, name):
                     })
     else:
         adjustments_frame = pd.DataFrame.from_dict(adjustments[name])
-        adjustments_frame.pop('count')
-        adjustments_frame.pop('type')
+
 
         if len(nan_blocks) > 0:
             for i in range(len(nan_blocks)):
@@ -222,8 +215,9 @@ def find(feed, feed_name, unit, plot_dir, plot_draw=False, override=False):
     # feed does not exist in fail_file
     if adjustments is None or feed_name not in adjustments:
         errors, feed_frame = find_failures(feed, feed_name, unit, plot_dir)
-        write_fail_file(errors)
-        feed = correct(feed, feed_name)
+        if errors is not None:
+            write_fail_file(errors)
+            feed = correct(feed, feed_name)
         errors, feed_frame = find_failures(feed, feed_name, unit, plot_dir=plot_dir, plot_data=plot_draw)
 
         adjustments = read_fail_file()
@@ -262,7 +256,7 @@ def find_failures(feed, feed_name, unit, plot_dir, plot_data=False):
         feed_frame[feed_name + '_error_inc'] = error_inc
 
     data_power = derive_power(feed).squeeze()
-    feed_frame[data_power.name] = data_power
+    feed_frame.insert(1, data_power.name, data_power)
     # Notify about rows where the derived power is significantly larger than the standard deviation value
 
     if unit == 'W' or not data_power.empty:
