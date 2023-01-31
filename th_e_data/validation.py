@@ -43,8 +43,6 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
     from pandas.plotting import register_matplotlib_converters
 
     register_matplotlib_converters()
-    feed_index = feed.index[:]
-    feeds_data = feed
     fig_counter = 0
 
     path = os.path.join(plot_dir, feed_name)
@@ -55,38 +53,36 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
     plt.rcParams.update({'figure.max_open_warning': 0})
     colors = plt.get_cmap('tab20c').colors
 
-    start = feeds_data.index[0]
-    while start <= feeds_data.index[-1]:
-        end = start + timedelta(days=days)
-        if end >= feeds_data.index[-1]:
-            data = feeds_data[start:]
-        else:
-            while end not in feed_index:
-                end = end + timedelta(seconds=1)
-            data = feeds_data[start:end]
+    week_start = feed.index[0]
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start -= timedelta(days=week_start.dayofweek)
+    while week_start <= feed.index[-1]:
+        week_end = week_start + timedelta(days=days)
+        week_data = feed[(feed.index >= week_start) & (feed.index < week_end)]
 
-        errors = any('_error_' in column for column in data.columns) and \
-                 data.filter(regex="_error_").dropna(how='all').empty
+        # if end >= feed.index[-1]:
+        #     data_week = feed[start:]
+        # else:
+        #     while end not in feed.index:
+        #         end = end + timedelta(seconds=1)
+        #     data_week = feed[start:end]
 
-        if data.empty or errors:
-            if data.empty:
-                logger.warning('Skipping empty interval at index %s for %s', start.strftime('%d.%m.%Y %H:%M'),
+        errors = any('_error_' in column for column in week_data.columns) and \
+                 not week_data.filter(regex="_error_").dropna(how='all').empty and \
+                 any(week_data.filter(regex="_error_").dropna(how='all'))
+
+        if week_data.empty or not errors:
+            if week_data.empty:
+                logger.warning('Skipping empty interval at index %s for %s', week_start.strftime('%d.%m.%Y %H:%M'),
                                feed_name)
             else:
                 logger.debug('Skipping visualization for expected behaviour at index %s ',
-                             start.strftime('%d.%m.%Y %H:%M'))
+                             week_start.strftime('%d.%m.%Y %H:%M'))
 
-            start = end
+            week_start = week_end
             continue
 
-        error = False
-        # find True values in Dataframe
-        for item in data:
-            for items in (data[item]):
-                if items is True:
-                    error = True
-        # draw plot
-        if error:
+        elif errors:
             fig, ax = plt.subplots(nrows=2)
             fig.autofmt_xdate()
             legend = []
@@ -94,7 +90,7 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
             colors_counter = 0
 
             # for feed_name in feeds_name:
-            feed = data.filter(regex=feed_name).dropna(how='all')
+            feed = week_data.filter(regex=feed_name).dropna(how='all')
             feed.index = feed.index.tz_convert('Europe/Berlin')
             feed_power = feed[feed_name + '_power'].dropna()
 
@@ -110,7 +106,7 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
             ax[1].xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M:%S'))
             ax[1].set_ylabel('Energy')
 
-            if error:
+            if errors:
                 def plot_error(index, error_name, marker):
                     ax[index].plot(feed.index, feed[feed_name + error_name].replace(False, np.NaN).replace(True, -1),
                                    color=colors[colors_counter + 6],
@@ -121,7 +117,7 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
                 plot_error(1, '_error_inc', marker='x')
                 plot_error(0, '_error_qnt', marker='x')
 
-            if any('_interpolated' in column for column in data.columns):
+            if any('_interpolated' in column for column in week_data.columns):
                 ax[1].plot(feed.index, feed[feed_name + '_interpolated'].replace(True, -1),
                            color=colors[colors_counter], marker='o', linestyle='None')
 
@@ -140,7 +136,7 @@ def plot(feed: pd.DataFrame, feed_name, plot_dir: str = '/var/opt/th-e-data/plot
             pyplot.savefig(save_plot)
             fig_counter += 1
 
-        start = end
+        week_start = week_end
 
 
 # writes the found errors into the file failures_found
@@ -157,7 +153,6 @@ def create_fail_file(nan_blocks, name):
                         'start': str(nan_blocks.get('start_idx')[i]),
                         'end': str(nan_blocks.get('till_idx')[i]),
                         'count': str(nan_blocks.get('count')[i]),
-
                     })
     else:
         adjustments_frame = pd.DataFrame.from_dict(adjustments[name])
@@ -174,7 +169,6 @@ def create_fail_file(nan_blocks, name):
                             'start': str(nan_blocks.get('start_idx')[i]),
                             'end': str(nan_blocks.get('till_idx')[i]),
                             'count': str(nan_blocks.get('count')[i]),
-
                         })
     return errors
 
