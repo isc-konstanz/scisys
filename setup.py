@@ -28,10 +28,16 @@ AUTHOR = 'ISC Konstanz'
 MAINTAINER_EMAIL = 'adrian.minde@isc-konstanz.de'
 URL = 'https://github.com/isc-konstanz/th-e-data'
 
-INSTALL_REQUIRES = ['tables >= 3.4',
-                    'seaborn >= 0.9',
-                    'matplotlib >= 3',
-                    'openpyxl >= 2.4']
+INSTALL_REQUIRES = [
+    'tables >= 3.4',
+    "th-e-core >= 0.6 @ git+https://github.com/isc-konstanz/th-e-core.git@master"
+]
+
+EXTRA_REQUIRES = {
+    'openpyxl >= 2.4': ['xlsx', 'excel'],
+    'seaborn >= 0.9': ['plot'],
+    'matplotlib >= 3': ['plot']
+}
 
 SCRIPTS = ['bin/th-e-data']
 
@@ -53,6 +59,7 @@ setup(
     url=URL,
     packages=PACKAGES,
     install_requires=INSTALL_REQUIRES,
+    extras_require=EXTRA_REQUIRES,
     scripts=SCRIPTS,
     **SETUPTOOLS_KWARGS
 )
