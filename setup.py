@@ -30,13 +30,13 @@ URL = 'https://github.com/isc-konstanz/th-e-data'
 
 INSTALL_REQUIRES = [
     'tables >= 3.4',
-    "th-e-core >= 0.6 @ git+https://github.com/isc-konstanz/th-e-core.git@master"
+    "th-e-core @ git+https://github.com/isc-konstanz/th-e-core.git@master"
 ]
 
-EXTRA_REQUIRES = {
-    'openpyxl >= 2.4': ['xlsx', 'excel'],
-    'seaborn >= 0.9': ['plot'],
-    'matplotlib >= 3': ['plot']
+EXTRAS_REQUIRE = {
+    'excel': ['openpyxl >= 2.4'],
+    'plot': ['matplotlib >= 3',
+             'seaborn >= 0.9']
 }
 
 SCRIPTS = ['bin/th-e-data']
@@ -59,7 +59,7 @@ setup(
     url=URL,
     packages=PACKAGES,
     install_requires=INSTALL_REQUIRES,
-    extras_require=EXTRA_REQUIRES,
+    extras_require=EXTRAS_REQUIRE,
     scripts=SCRIPTS,
     **SETUPTOOLS_KWARGS
 )
