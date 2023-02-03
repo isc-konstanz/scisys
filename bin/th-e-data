@@ -10,43 +10,37 @@
 from __future__ import annotations
 
 import os
-import shutil
 import pytz as tz
-import pandas as pd
 import datetime as dt
+import inspect
 
-from typing import Any, List
 from argparse import ArgumentParser, RawTextHelpFormatter
-from th_e_core import Configurations, System
+from th_e_core.tools import to_date, ceil_date, resample_data
+from th_e_core import Settings, System
 
 
-def main(args: List[Any]) -> None:
-    setting_args = vars(args)
-    action = setting_args.pop('action')
+def main(**kwargs) -> None:
+    action = kwargs.pop('action')
 
-    settings = Configurations('settings.cfg', **setting_args)
-    setting_args.update(settings.general)
-
-    systems = System.read(**setting_args)
+    systems = System.read(settings)
     if action == 'build':
-        systems.build(**setting_args)
+        systems.build(**kwargs)
     elif action == 'process':
         for system in systems:
-            process(system, **setting_args)
+            process(system, **kwargs)
 
 
 def process(system: System,
             data_dir: str = 'data',
             start: str | dt.datetime = dt.datetime(1970, 1, 1, tzinfo=tz.UTC),
             end: str | dt.datetime = None, **kwargs) -> None:
-    from th_e_core.tools import ceil_date, resample_data
     from th_e_core.io.csv import CsvDatabase
     from th_e_data.process import process
 
-    start = _get_date(start, system.location.timezone)
-    end = _get_date(end, system.location.timezone)
+    start = to_date(start, timezone=system.location.timezone)
+    end = to_date(end, timezone=system.location.timezone)
     if end is not None:
-        end = ceil_date(end, system.location.timezone)
+        end = ceil_date(end, timezone=system.location.timezone)
 
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
@@ -71,15 +65,7 @@ def process(system: System,
         database.write(resampled, file=data_file + '_{}m.csv'.format(resolution))
 
 
-def _get_date(time: str | dt.datetime, timezone: tz.timezone) -> pd.Timestamp:
-    if isinstance(time, str):
-        return pd.Timestamp(timezone.localize(dt.datetime.strptime(time, '%d.%m.%Y')))
-    if time is not None and time.tzinfo is not None and time.tzinfo.utcoffset(time) is not None:
-        time = time.astimezone(timezone)
-    return time
-
-
-def _get_parser(root_dir: str) -> ArgumentParser:
+def _get_parser() -> ArgumentParser:
     from th_e_core import __version__
 
     parser = ArgumentParser(description=__doc__, formatter_class=RawTextHelpFormatter)
@@ -92,53 +78,19 @@ def _get_parser(root_dir: str) -> ArgumentParser:
     subparsers.add_parser('build', help='Build data for the configured set of systems')
     subparsers.add_parser('process', help='Processes data for the configured set of systems')
 
-    parser.add_argument('-r', '--root-directory',
-                        dest='root_dir',
-                        help="directory where the package and related libraries are located",
-                        default=root_dir,
-                        metavar='DIR')
-
-    parser.add_argument('-c', '--config-directory',
-                        dest='config_dir',
-                        help="directory to expect configuration files",
-                        default='conf',
-                        metavar='DIR')
-
-    parser.add_argument('-d', '--data-directory',
-                        dest='data_dir',
-                        help="directory to expect and write result files to",
-                        default='data',
-                        metavar='DIR')
-
     return parser
 
 
 if __name__ == "__main__":
-    run_dir = os.getcwd()
+    run_dir = os.path.dirname(os.path.abspath(inspect.getsourcefile(main)))
     if os.path.basename(run_dir) == 'bin':
         run_dir = os.path.dirname(run_dir)
 
     os.chdir(run_dir)
-
     os.environ['NUMEXPR_MAX_THREADS'] = str(os.cpu_count())
 
-    if not os.path.exists('log'):
-        os.makedirs('log')
+    settings = Settings('th-e-data', parser=_get_parser())
 
-    logging_file = os.path.join(os.path.join(run_dir, 'conf'), 'logging.cfg')
-    if not os.path.isfile(logging_file):
-        logging_default = logging_file.replace('logging.cfg', 'logging.default.cfg')
-        if os.path.isfile(logging_default):
-            shutil.copy(logging_default, logging_file)
-        else:
-            raise FileNotFoundError("Unable to open logging.cfg in: " +
-                                    os.path.join(os.path.join(run_dir, 'conf')))
-
-    # Load the logging configuration
     import logging
-    import logging.config
-
-    logging.config.fileConfig(logging_file)
     logger = logging.getLogger('th-e-data')
-
-    main(_get_parser(run_dir).parse_args())
+    main(**settings.general)
