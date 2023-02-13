@@ -15,6 +15,7 @@ import datetime as dt
 from th_e_core import System, Location
 from th_e_core.io import Database
 from th_e_core.configs import Configurations
+from th_e_core.tools import ceil_date, to_date, to_int, to_bool
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,8 @@ logger = logging.getLogger(__name__)
 # noinspection PyShadowingBuiltins
 def build(configs: Configurations,
           database: Database,
-          start: pd.Timestamp | dt.datetime = None,
-          end:   pd.Timestamp | dt.datetime = None, **kwargs) -> Optional[pd.DataFrame]:
+          start: str | pd.Timestamp | dt.datetime = None,
+          end:   str | pd.Timestamp | dt.datetime = None, **kwargs) -> Optional[pd.DataFrame]:
     if database is None:
         return
 
@@ -31,6 +32,17 @@ def build(configs: Configurations,
         return
 
     buildargs = dict(configs.items('Data'))
+    rename = to_bool(buildargs.pop('rename', False))
+    split = to_bool(buildargs.pop('split', True))
+
+    start = to_date(start, timezone=database.timezone)
+    end = to_date(end, timezone=database.timezone)
+    end = ceil_date(end)
+    if start is None and end is None and 'year' in buildargs:
+        from dateutil.relativedelta import relativedelta
+        start = pd.Timestamp(to_int(buildargs.pop('year')), 1, 1).tz_localize(database.timezone)
+        end = start + relativedelta(years=1) - dt.timedelta(seconds=1)
+
     buildargs['start'] = start
     buildargs['end'] = end
     buildargs.update(kwargs)
@@ -60,7 +72,16 @@ def build(configs: Configurations,
         raise ValueError('Invalid data build type: {}'.format(type))
 
     if database.enabled and data is not None and not data.empty:
-        database.write(data, split_data=True, **kwargs)
+        if start is None:
+            start = data.index[0]
+        if end is None:
+            end = data.index[-1]
+        data = data[(data.index >= start) &
+                    (data.index <= end)]
+        if data.index.tzinfo is not None and data.index.tzinfo.utcoffset(data.index) is not None:
+            data = data.tz_convert(database.timezone)
+
+        database.write(data, split_data=split, rename=rename, **kwargs)
 
     return data
 
