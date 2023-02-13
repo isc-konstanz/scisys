@@ -19,7 +19,7 @@ from typing import Union
 from copy import deepcopy
 
 # noinspection PyProtectedMember
-from th_e_core.tools import _resample_series
+from th_e_core.tools import _resample_series, to_date, floor_date, ceil_date
 from th_e_core.system import System
 from th_e_core.cmpt import Photovoltaics
 
@@ -96,33 +96,47 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
 
     if key is None:
         raise Exception("Unable to process OPSD with unconfigured key")
-    if key not in data.columns:
-        raise Exception("Unable to find OPSD household: " + key)
 
     data.index.rename('time', inplace=True)
-    data = data.filter(regex=key).dropna(how='all')
+    data = data.filter(regex=key)  # .dropna(how='all')
+    if data.empty:
+        raise Exception("Unable to find OPSD household: " + key)
+
     for column in data.columns:
         column_name = column.split(key + '_', 1)[1] + '_energy'
         data.rename(columns={column: column_name}, inplace=True)
 
-    columns_power = [System.POWER_EL, System.POWER_EL_IMP, System.POWER_EL_EXP]
-    columns_energy = [System.ENERGY_EL, System.ENERGY_EL_IMP, System.ENERGY_EL_EXP]
-
+    columns_power = [System.POWER_EL, System.POWER_EL_IMP]
+    columns_energy = [System.ENERGY_EL, System.ENERGY_EL_IMP]
     data[System.ENERGY_EL_IMP] = _process_energy(data['grid_import_energy'])
     data[System.POWER_EL_IMP] = _process_power(data['grid_import_energy'])
 
-    data[System.ENERGY_EL_EXP] = _process_energy(data['grid_export_energy'])
-    data[System.POWER_EL_EXP] = _process_power(data['grid_export_energy'])
+    if 'grid_export_energy' in data.columns:
+        columns_power.append(System.POWER_EL_EXP)
+        columns_energy.append(System.ENERGY_EL_EXP)
+        data[System.ENERGY_EL_EXP] = _process_energy(data['grid_export_energy'])
+        data[System.POWER_EL_EXP] = _process_power(data['grid_export_energy'])
 
-    if 'pv_energy' in data.columns:
-        columns_power.append(Photovoltaics.POWER)
-        columns_energy.append(Photovoltaics.ENERGY)
-        data[Photovoltaics.ENERGY] = _process_energy(data['pv_energy'])
-        data[Photovoltaics.POWER] = _process_power(data['pv_energy'])
+    data_pv = data.filter(regex="pv*_")
+    if not data_pv.empty:
+        for column_energy in data_pv.columns:
+            column_power = column_energy.replace('_energy', '_power')
+            columns_power.append(column_power)
+            columns_energy.append(column_energy)
+            data[column_energy] = _process_energy(data_pv[column_energy])
+            data[column_power] = _process_power(data_pv[column_energy])
+
+        if 'pv_energy' not in data.columns:
+            columns_power.append(Photovoltaics.POWER)
+            columns_energy.append(Photovoltaics.ENERGY)
+            data[Photovoltaics.ENERGY] = _process_energy(data_pv.fillna(0).sum(axis=1))
+            data[Photovoltaics.POWER] = _process_power(data[Photovoltaics.ENERGY])
 
     data[System.ENERGY_EL] = data[System.ENERGY_EL_IMP]
     if 'pv_energy' in data.columns:
-        pv_cons = data[Photovoltaics.ENERGY] - data[System.ENERGY_EL_EXP]
+        pv_cons = data[Photovoltaics.ENERGY]
+        if 'grid_export_energy' in data.columns:
+            pv_cons -= data[System.ENERGY_EL_EXP]
         data[System.ENERGY_EL] += pv_cons
 
     if 'heat_pump_energy' in data.columns:
@@ -153,14 +167,16 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
 
     data[System.POWER_EL] = _process_power(data[System.ENERGY_EL])
 
-    return data[columns_power + columns_energy]
+    return data[columns_power]  # + columns_energy]
 
 
 # noinspection PyProtectedMember
 # noinspection PyShadowingBuiltins
 def process_meteoblue(dir: str = 'Meteoblue',
-                      latitude: Union[str, float] = None,
-                      longitude: Union[str, float] = None, **_) -> pd.DataFrame:
+                      latitude: str | float = None,
+                      longitude: str | float = None,
+                      start: str | pd.Timestamp | dt.datetime = None,
+                      end:   str | pd.Timestamp | dt.datetime = None, **_) -> pd.DataFrame:
     from th_e_core.io._var import WEATHER
 
     if latitude is None or longitude is None:
@@ -205,7 +221,7 @@ def process_meteoblue(dir: str = 'Meteoblue',
                                     ' Wind Speed':              'wind_speed',
                                     ' Wind Direction':          'wind_direction',
                                     ' Wind Gust':               'wind_gust',
-                                    ' Relative Humidity':       'humidity_rel',
+                                    ' Relative Humidity':       'relative_humidity',
                                     ' Mean Sea Level Pressure': 'pressure_sea',
                                     ' Shortwave Radiation':     'ghi',
                                     ' DNI - backwards':         'dni',
@@ -217,7 +233,16 @@ def process_meteoblue(dir: str = 'Meteoblue',
                                     ' Total Precipitation':     'precipitation',
                                     ' Snow Fraction':           'snow_fraction'})
 
-        if os.path.isdir(location_dir):
+        if start is not None or end is not None:
+            if start is not None:
+                start = to_date(start)
+            if end is not None:
+                end = to_date(end)
+                end = ceil_date(end)
+
+        if os.path.isdir(location_dir) and \
+                (start is not None and start < data.index[0]) and \
+                (end is not None and end > data.index[-1]):
             # Delete unavailable column of continuous forecasts
             del data['wind_gust']
 
@@ -225,10 +250,11 @@ def process_meteoblue(dir: str = 'Meteoblue',
                 path = os.path.join(location_dir, file)
                 if os.path.isfile(path) and file.endswith('.csv'):
                     forecast = pd.read_csv(path, index_col='time', parse_dates=['time'])
-                    forecast = forecast.rename(columns={'rain':        'precipitation',
-                                                        'rain_shower': 'precipitation_convective',
-                                                        'rain_prob':   'precipitation_probability',
-                                                        'snow':        'snow_fraction'})
+                    forecast = forecast.rename(columns={'humidity_rel': 'relative_humidity',
+                                                        'rain':         'precipitation',
+                                                        'rain_shower':  'precipitation_convective',
+                                                        'rain_prob':    'precipitation_probability',
+                                                        'snow':         'snow_fraction'})
 
                     start = forecast.index[0]
                     data = forecast.loc[start:start+dt.timedelta(hours=23, minutes=59, seconds=59), data.columns]\
@@ -239,14 +265,13 @@ def process_meteoblue(dir: str = 'Meteoblue',
                     #     if not os.path.exists(loc_file):
                     #         forecast.to_csv(loc_file, sep=',', encoding='utf-8-sig')
 
-        data_index = pd.date_range(start=data.index[0],
-                                   end=data.index[-1],
-                                   freq=str((data.index[1] - data.index[0]).seconds)+'s')
-        data = data.combine_first(pd.DataFrame(index=data_index, columns=data.columns))
-        data.index.name = 'time'
+        # data_index = pd.date_range(start=data.index[0],
+        #                            end=data.index[-1],
+        #                            freq=str((data.index[1] - data.index[0]).seconds)+'s')
+        # data = data.combine_first(pd.DataFrame(index=data_index, columns=data.columns))
+        # data.index.name = 'time'
 
         data = data[[column for column in WEATHER.keys() if column in data.columns]]
-        data = _process_gaps(data, days_prior=10*365)
 
         # Upsample forecast to a resolution of 1 minute. Use the advanced Akima interpolator for best results
         data = data.resample('1Min').interpolate(method='akima')
