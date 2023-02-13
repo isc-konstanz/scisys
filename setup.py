@@ -30,7 +30,7 @@ URL = 'https://github.com/isc-konstanz/th-e-data'
 
 INSTALL_REQUIRES = [
     'tables >= 3.4',
-    "th-e-core @ git+https://github.com/isc-konstanz/th-e-core.git@master"
+    "th-e-core @ git+https://github.com/isc-konstanz/th-e-core.git@stable"
 ]
 
 EXTRAS_REQUIRE = {
