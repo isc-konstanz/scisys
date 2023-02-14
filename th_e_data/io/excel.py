@@ -15,6 +15,8 @@ from openpyxl.styles import Border, Font, Side
 from tables import NaturalNameWarning
 from copy import copy
 
+from th_e_core.tools import resample_data
+
 warnings.filterwarnings('ignore', category=NaturalNameWarning)
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,8 @@ def write_excel(system, summary, data_frames, file: str = 'summary.xlsx'):
         summary_book = summary_writer.book
 
         for data_key, data in data_frames.items():
+            # Resample data to be written in hourly resolution
+            data = resample_data(data, 60*60)
             data.to_excel(summary_writer, sheet_name=data_key, encoding='utf-8-sig')
             data_sheet = summary_book[data_key]
             for column in range(1, len(data_sheet[1])):
@@ -53,29 +57,29 @@ def write_excel(system, summary, data_frames, file: str = 'summary.xlsx'):
         for data_sheet in summary_book:
             if data_sheet.title == 'Summary':
                 data_sheet.delete_rows(3, 1)
+                header_len = summary.columns.nlevels
+            else:
+                header_len = data_frames[data_sheet.title].columns.nlevels
 
-            header_len = len(summary.columns.levels)
             header_font = Font(name="Calibri Light", size=12, color='333333')
 
             for column in range(len(data_sheet[header_len])):
                 for header_row in range(1, header_len + 1):
                     header_cell = data_sheet[header_row][column]
-                    if header_row <= header_len:
-                        if '\n' in str(header_cell.value):
-                            header_alignment = copy(header_cell.alignment)
-                            header_alignment.wrapText = True
-                            # header_alignment.vertical = 'center'
-                            # header_alignment.horizontal = 'center'
-                            header_cell.alignment = header_alignment
-                            data_sheet.row_dimensions[header_row].height = 33
+                    if '\n' in str(header_cell.value):
+                        header_alignment = copy(header_cell.alignment)
+                        header_alignment.wrapText = True
+                        # header_alignment.vertical = 'center'
+                        # header_alignment.horizontal = 'center'
+                        header_cell.alignment = header_alignment
+                        data_sheet.row_dimensions[header_row].height = 33
 
-                        header_cell.font = header_font
-                        header_cell.border = border
+                    header_cell.font = header_font
+                    header_cell.border = border
 
                 if data_sheet.title == 'Summary' or column == 0:
                     data_column_width = 0
-                    for data_row in range(1, len(data_sheet[get_column_letter(column + 1)]) + 1):
-                        data_cell = data_sheet[data_row][column]
+                    for data_cell in data_sheet[get_column_letter(column + 1)]:
                         data_cell.border = border
                         data_column_width = max(data_column_width, len(str(data_cell.value)))
                     data_sheet.column_dimensions[get_column_letter(column + 1)].width = data_column_width + 2
