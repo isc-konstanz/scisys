@@ -15,13 +15,11 @@ from openpyxl.styles import Border, Font, Side
 from tables import NaturalNameWarning
 from copy import copy
 
-from th_e_core.tools import resample_data
-
 warnings.filterwarnings('ignore', category=NaturalNameWarning)
 logger = logging.getLogger(__name__)
 
 
-def write_excel(system, summary, data_frames, file: str = 'summary.xlsx'):
+def write_excel(summary, data_frames, dir: str = 'data', file: str = 'summary.xlsx'):
     border_side = Side(border_style=None)
     border = Border(top=border_side,
                     right=border_side,
@@ -29,7 +27,7 @@ def write_excel(system, summary, data_frames, file: str = 'summary.xlsx'):
                     left=border_side)
 
     if not os.path.isabs(file):
-        summary_path = os.path.join(system.configs.dirs.data, file)
+        summary_path = os.path.join(dir, file)
     else:
         summary_path = file
     if not summary_path.endswith('.xlsx'):
@@ -39,14 +37,12 @@ def write_excel(system, summary, data_frames, file: str = 'summary.xlsx'):
     if not os.path.isdir(summary_dir):
         os.makedirs(summary_dir, exist_ok=True)
 
-    with pd.ExcelWriter(file, engine='openpyxl') as summary_writer:
-        summary.to_excel(summary_writer, sheet_name='Summary', float_format="%.2f", encoding='utf-8-sig')
+    with pd.ExcelWriter(summary_path, engine='openpyxl') as summary_writer:
+        summary.to_excel(summary_writer, sheet_name='Summary', float_format="%.2f")  # , encoding='utf-8-sig')
         summary_book = summary_writer.book
 
         for data_key, data in data_frames.items():
-            # Resample data to be written in hourly resolution
-            data = resample_data(data, 60*60)
-            data.to_excel(summary_writer, sheet_name=data_key, encoding='utf-8-sig')
+            data.to_excel(summary_writer, sheet_name=data_key)  # , encoding='utf-8-sig')
             data_sheet = summary_book[data_key]
             for column in range(1, len(data_sheet[1])):
                 data_column_width = data.iloc[:, column - 1].apply(lambda s: len(str(s))).max()
