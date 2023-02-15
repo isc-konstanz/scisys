@@ -20,6 +20,7 @@ import datetime as dt
 import th_e_data.io as io
 # noinspection PyProtectedMember
 from th_e_core.io._var import rename
+from th_e_core.io import DatabaseUnavailableException
 from th_e_core import Settings, System, Configurations
 from copy import deepcopy
 
@@ -54,13 +55,16 @@ class Evaluations(Sequence):
         evaluation_columns = []
         evaluations = {}
         for result in results:
+            result_evaluations = self._get_valid(result)
+            if len(result_evaluations) < 1:
+                continue
             if result.name not in index:
                 index.append(result.name)
             for duration in result.durations:
                 duration_column = ('Durations [min]', str(duration))
                 if duration_column not in duration_columns:
                     duration_columns.append(duration_column)
-            for evaluation in self._get_valid(result):
+            for evaluation in result_evaluations:
                 evaluation_columns.append((evaluation.header, evaluation.name))
                 evaluations[evaluation.name] = pd.DataFrame()
         columns = duration_columns + [('Total', 'Weighted')]
@@ -69,12 +73,15 @@ class Evaluations(Sequence):
         summary = pd.DataFrame(index=index, columns=pd.MultiIndex.from_tuples(columns))
 
         for result in results:
+            result_evaluations = self._get_valid(result)
+            if len(result_evaluations) < 1:
+                continue
             for duration in result.durations.keys():
                 summary.loc[result.name, ('Durations [min]', duration)] = round(result.durations[duration], 2)
 
             kpi_total_weights = 0
             kpi_total_sum = 0
-            for evaluation in self._get_valid(result):
+            for evaluation in result_evaluations:
                 kpi, kpi_data = evaluation(result)
                 kpi_data = kpi_data.to_frame()
                 kpi_data.columns = [evaluation.header]
@@ -516,11 +523,14 @@ class Results(MutableMapping):
         if not os.path.isdir(data_dir):
             os.makedirs(data_dir, exist_ok=True)
 
-        # noinspection PyProtectedMember
-        self._database = deepcopy(system._database)
-        self._database.dir = data_dir
-        self._database.enabled = True
         self._datastore = pd.HDFStore(os.path.join(data_dir, 'results.h5'))
+        try:
+            self._database = deepcopy(system.database)
+            self._database.dir = data_dir
+            self._database.enabled = True
+
+        except DatabaseUnavailableException:
+            self._database = None
 
         self.data = pd.DataFrame()
         self.durations = Durations(system)
@@ -549,9 +559,10 @@ class Results(MutableMapping):
         self.close()
 
     def close(self):
-        self.durations.stop()
-        self._database.close()
+        if self._database is not None:
+            self._database.close()
         self._datastore.close()
+        self.durations.stop()
         if self.verbose:
             for results_err in [c for c in self.data.columns if c.endswith('_err')]:
                 results_file = os.path.join('results',
@@ -565,7 +576,7 @@ class Results(MutableMapping):
         data.to_hdf(self._datastore, f"/{key}")
         if concat:
             self.data = pd.concat([self.data, data], axis=0)
-        if self.verbose:
+        if self._database is not None and self.verbose:
             self._database.write(data, file=f"{key}.csv", rename=False)
 
     def load(self, key: str) -> pd.DataFrame:
