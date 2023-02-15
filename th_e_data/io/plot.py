@@ -43,7 +43,7 @@ def print_barplot(data, index, column, file,
     colors = sns.dark_palette(color, n_colors=color_num, reverse=True)
     plot = sns.barplot(x=index, y=column, ci='sd',
                        data=data,
-                        palette=colors,
+                       palette=colors,
                        **kwargs)
     if len(np.unique(index)) > 24:
         plot.xaxis.set_tick_params(rotation=45)

@@ -7,12 +7,11 @@
 """
 from __future__ import annotations
 from collections.abc import Sequence, Mapping, MutableMapping
-from typing import Tuple, List, Dict, Iterator
+from typing import Tuple, List, Iterator
 
 import os
 import re
 import json
-import shutil
 import logging
 import numpy as np
 import pandas as pd
@@ -21,7 +20,7 @@ import datetime as dt
 import th_e_data.io as io
 # noinspection PyProtectedMember
 from th_e_core.io._var import rename
-from th_e_core import System, Configurations, ConfigurationUnavailableException
+from th_e_core import Settings, System, Configurations
 from copy import deepcopy
 
 logger = logging.getLogger('th-e-evaluation')
@@ -35,6 +34,7 @@ TARGETS = {
 
 class Evaluations(Sequence):
 
+    # noinspection PyShadowingBuiltins
     def __init__(self, evaluations: List[Evaluation], dir: str = 'data') -> None:
         self._evaluations = evaluations
         self._evaluation_dir = dir
@@ -48,11 +48,7 @@ class Evaluations(Sequence):
     def __getitem__(self, index: int) -> Evaluation:
         return self._evaluations[index]
 
-    def _get_valid(self, results: Results) -> List[Evaluation]:
-        return [e for e in self._evaluations if e.is_valid(results)]
-
-    def run(self, results: List[Results]) -> None:
-        # Prepare the DataFrames, to ensure corrent
+    def __call__(self, results: List[Results]) -> None:
         index = []
         duration_columns = []
         evaluation_columns = []
@@ -79,7 +75,7 @@ class Evaluations(Sequence):
             kpi_total_weights = 0
             kpi_total_sum = 0
             for evaluation in self._get_valid(result):
-                kpi, kpi_data = evaluation.run(result)
+                kpi, kpi_data = evaluation(result)
                 kpi_data = kpi_data.to_frame()
                 kpi_data.columns = [evaluation.header]
                 kpi_data.index.name = rename(evaluation.group)
@@ -90,35 +86,30 @@ class Evaluations(Sequence):
                 # TODO: Add meaningful debugging
                 kpi_total_weights += evaluation.weight
                 kpi_total_sum += kpi*evaluation.weight
-            kpi_total = kpi_total_sum/kpi_total_weights
+            kpi_total = kpi_total_sum/(kpi_total_weights if kpi_total_weights > 0 else 1)
 
             summary.loc[result.name, ('Total', 'Weighted')] = kpi_total
 
         io.write_excel(summary, evaluations, self._evaluation_dir)
 
+    def _get_valid(self, results: Results) -> List[Evaluation]:
+        return [e for e in self._evaluations if e.is_valid(results)]
+
 
 class Evaluation:
 
     @classmethod
-    def read(cls, config_dir:  str = 'conf', data_dir:  str = 'conf', **kwargs) -> Evaluations:
+    def read(cls, settings: Settings) -> Evaluations:
         evaluations = []
-        evaluation_file = os.path.join(config_dir, 'evaluations.cfg')
-        if not os.path.isfile(evaluation_file):
-            config_default = evaluation_file.replace('.cfg', '.default.cfg')
-            if os.path.isfile(config_default):
-                shutil.copy(config_default, evaluation_file)
-            else:
-                raise ConfigurationUnavailableException('Unable to find evaluation file "{}"'.format(evaluation_file))
-
-        evaluation_configs = Configurations.read(evaluation_file, config_dir, data_dir, **kwargs)
+        evaluation_configs = Configurations.from_configs(settings, 'evaluations.cfg', require=False)
         for evaluation in [s for s in evaluation_configs.sections() if s.lower() != 'general']:
             evaluation_args = dict(evaluation_configs[evaluation].items())
-            evaluations += cls._init(evaluation, **evaluation_args)
+            evaluations += cls._read(evaluation, **evaluation_args)
 
-        return Evaluations(evaluations, data_dir)
+        return Evaluations(evaluations, settings.dirs.data)
 
     @classmethod
-    def _init(cls, name: str, target: str, group: str, **kwargs) -> List[Evaluation]:
+    def _read(cls, name: str, target: str, group: str, **kwargs) -> List[Evaluation]:
         evaluations = []
         for evaluation_target in target.split(','):
             evaluations.append(cls(name, evaluation_target.strip(), group, **kwargs))
@@ -145,6 +136,17 @@ class Evaluation:
         self.metric = metric
         self.plot = plot
 
+    def __call__(self, results: Results) -> Tuple[float, pd.Series]:
+        # Prepare the data to contain only necessary columns and rows
+        data = self._select(results)
+
+        evaluation = self._process(data)
+        summary = self._summarize(evaluation)
+
+        self._plot(results, data, evaluation)
+
+        return summary, evaluation
+
     @property
     def id(self):
         return self._id
@@ -161,7 +163,7 @@ class Evaluation:
     @property
     def columns(self):
         return [self._target,
-                self._target+'_est',
+                self._target+'_ref',
                 self._target+'_err',
                 self.group]
 
@@ -295,12 +297,12 @@ class Evaluation:
 
             self._plots.append(p)
 
-    def _plot(self, results: Results, data: pd.DataFrame, evaluation: pd.DataFrame) -> None:
+    def _plot(self, results: Results, data: pd.DataFrame, evaluation: pd.DataFrame | pd.Series) -> None:
         if len(self.plot) < 1:
             return
 
         plot_name = '{0}_{1}'.format(self._target.replace('_power', '').lower(), self.id)
-        plot_dir = os.path.join(results.system.configs['General']['data_dir'], 'results', 'plots')
+        plot_dir = os.path.join(results.system.configs.dirs.data, 'results', 'plots')
         if not os.path.isdir(plot_dir):
             os.makedirs(plot_dir, exist_ok=True)
 
@@ -313,10 +315,10 @@ class Evaluation:
                 plot_args['style'] = 'Results'
                 plot_args['ylabel'] = 'Power [W]'
                 plot_data = data.rename(columns={
-                    self._target+'_est': 'Prediction',
-                    self._target:        'Measurement'
+                    self._target:        'Prediction',
+                    self._target+'_ref': 'Reference'
                 })
-                plot_data = plot_data[[self.group, 'Prediction', 'Measurement']]
+                plot_data = plot_data[[self.group, 'Prediction', 'Reference']]
                 plot_melt = pd.melt(plot_data, self.group, value_name='values', var_name='Results')
                 io.print_lineplot(plot_melt, self.group, 'values', plot_file, **plot_args)
             elif plot == 'bar':
@@ -334,16 +336,16 @@ class Evaluation:
 
     def _select(self, results: Results) -> pd.DataFrame:
         data = deepcopy(results.data)
-        for condition in self.condition:
-            if 'hour' in self.group:
-                data['hour'] = data.index.hour
-            elif 'day_of_week' in self.group:
-                data['day_of_week'] = data.index.day_of_week
-            elif 'day_of_year' in self.group:
-                data['day_of_year'] = data.index.day_of_year
-            elif 'month' in self.group:
-                data['month'] = data.index.month
+        if 'hour' in self.group:
+            data['hour'] = data.index.hour
+        elif 'day_of_week' in self.group:
+            data['day_of_week'] = data.index.day_of_week
+        elif 'day_of_year' in self.group:
+            data['day_of_year'] = data.index.day_of_year
+        elif 'month' in self.group:
+            data['month'] = data.index.month
 
+        for condition in self.condition:
             data.query(condition, inplace=True)
         return data[self.columns]
 
@@ -372,7 +374,7 @@ class Evaluation:
             _, bin_edges = np.histogram(data[self.group], bins=self.group_bins)
             for bin_left, bin_right in [(bin_edges[i], bin_edges[i+1]) for i in range(self.group_bins)]:
                 bin_step = data.loc[(data[self.group] > bin_left) & (data[self.group] <= bin_right), self.target]
-                bin_data.append(getattr(self, '_summarize_{method}'.format(method=self.metric))(bin_step))
+                bin_data.append(getattr(self, f'_summarize_{self.metric}')(bin_step))
                 bin_vals.append(0.5*(bin_left + bin_right))
 
         return pd.Series(index=bin_vals, data=bin_data, name=self.target)
@@ -426,7 +428,6 @@ class Evaluation:
         return data.idxmax()
 
     def is_valid(self, results: Results) -> bool:
-        # TODO: Implement calculating error from target and reference instead of expecting column to exist
         if self.target not in results.data.columns:
             return False
         if self.group not in results.data.columns and self.group not in \
@@ -438,22 +439,11 @@ class Evaluation:
             return False
         return True
 
-    def run(self, results: Results) -> Tuple[float, pd.DataFrame]:
-        # Prepare the data to contain only necessary columns and rows
-        data = self._select(results)
-
-        evaluation = self._process(data)
-        summary = self._summarize(evaluation)
-
-        self._plot(results, data, evaluation)
-
-        return summary, evaluation
-
 
 class Durations(Mapping):
 
     def __init__(self, system: System) -> None:
-        self._file = os.path.join(system.configs['General']['data_dir'], 'results', 'results.json')
+        self._file = os.path.join(system.configs.dirs.data, 'results', 'results.json')
         if os.path.isfile(self._file):
             with open(self._file, 'r', encoding='utf-8') as f:
                 self._durations = json.load(f)
@@ -521,7 +511,7 @@ class Results(MutableMapping):
 
     def __init__(self, system: System, verbose: bool = False) -> None:
         self.system = system
-        system_dir = system.configs['General']['data_dir']
+        system_dir = system.configs.dirs.data
         data_dir = os.path.join(system_dir, 'results')
         if not os.path.isdir(data_dir):
             os.makedirs(data_dir, exist_ok=True)
@@ -553,7 +543,7 @@ class Results(MutableMapping):
         return len(self._datastore)
 
     def __contains__(self, key: str) -> bool:
-        return '/{}'.format(key) in self._datastore
+        return f"/{key}" in self._datastore
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
@@ -571,11 +561,12 @@ class Results(MutableMapping):
 
                 io.write_csv(self.system, results_data, results_file)
 
-    def set(self, key: str, data: pd.DataFrame) -> None:
-        data.to_hdf(self._datastore, '/{}'.format(key))
-        self.data = pd.concat([self.data, data], axis=0)
+    def set(self, key: str, data: pd.DataFrame, concat: bool = True) -> None:
+        data.to_hdf(self._datastore, f"/{key}")
+        if concat:
+            self.data = pd.concat([self.data, data], axis=0)
         if self.verbose:
-            self._database.write(data, file='{}.csv'.format(key), rename=False)
+            self._database.write(data, file=f"{key}.csv", rename=False)
 
     def load(self, key: str) -> pd.DataFrame:
         data = self.get(key)
@@ -585,7 +576,11 @@ class Results(MutableMapping):
 
     # noinspection PyTypeChecker
     def get(self, key: str) -> pd.DataFrame:
-        return self._datastore.get('/{}'.format(key))
+        return self._datastore.get(f"/{key}")
+
+    @property
+    def id(self):
+        return self.system.id
 
     @property
     def name(self):
