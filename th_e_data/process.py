@@ -146,7 +146,7 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
         data['hp_energy'] = _process_energy(data['heat_pump_energy'])
         data['hp_power'] = _process_power(data['heat_pump_energy'])
 
-        data[System.POWER_EL] -= data['hp_energy']
+        data[System.ENERGY_EL] -= data['hp_energy']
 
         # TODO: Make COP more sophisticated
         # Maybe try to differentiate between heating and warm water
