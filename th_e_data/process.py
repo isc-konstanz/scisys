@@ -117,7 +117,7 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
         data[System.ENERGY_EL_EXP] = _process_energy(data['grid_export_energy'])
         data[System.POWER_EL_EXP] = _process_power(data['grid_export_energy'])
 
-    data_pv = data.filter(regex="pv*_")
+    data_pv = data[[c for c in data.columns if c.startswith('pv_')]]
     if not data_pv.empty:
         for column_energy in data_pv.columns:
             column_power = column_energy.replace('_energy', '_power')
