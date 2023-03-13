@@ -1,10 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-    th-e-data
-    ~~~~~~~~~
+    scisys
+    ~~~~~~
 
-    To learn how to configure the processing of timeseries, see "th-e-data --help"
+    To learn how to configure the scientific processing of energy systems, see "scisys --help"
 
 """
 from __future__ import annotations
@@ -15,8 +15,8 @@ import datetime as dt
 import inspect
 
 from argparse import ArgumentParser, RawTextHelpFormatter
-from th_e_core.tools import to_date, ceil_date, resample_data
-from th_e_core import Settings, System
+from corsys.tools import to_date, ceil_date, resample_data
+from corsys import Settings, System
 
 
 def main(**kwargs) -> None:
@@ -34,8 +34,8 @@ def process(system: System,
             data_dir: str = 'data',
             start: str | dt.datetime = dt.datetime(1970, 1, 1, tzinfo=tz.UTC),
             end: str | dt.datetime = None, **kwargs) -> None:
-    from th_e_core.io.csv import CsvDatabase
-    from th_e_data.process import process
+    from corsys.io.csv import CsvDatabase
+    from scisys.process import process
 
     start = to_date(start, timezone=system.location.timezone)
     end = to_date(end, timezone=system.location.timezone)
@@ -66,7 +66,7 @@ def process(system: System,
 
 
 def _get_parser() -> ArgumentParser:
-    from th_e_core import __version__
+    from corsys import __version__
 
     parser = ArgumentParser(description=__doc__, formatter_class=RawTextHelpFormatter)
     parser.add_argument('-v', '--version',
@@ -89,8 +89,8 @@ if __name__ == "__main__":
     os.chdir(run_dir)
     os.environ['NUMEXPR_MAX_THREADS'] = str(os.cpu_count())
 
-    settings = Settings('th-e-data', parser=_get_parser())
+    settings = Settings('scisys', parser=_get_parser())
 
     import logging
-    logger = logging.getLogger('th-e-data')
+    logger = logging.getLogger('scisys')
     main(**settings.general)

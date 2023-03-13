@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-    th-e-data.process
-    ~~~~~~~~~~~~~~~~~
+    scisys.process
+    ~~~~~~~~~~~~~~
     
     
 """
@@ -19,9 +19,9 @@ from typing import Union
 from copy import deepcopy
 
 # noinspection PyProtectedMember
-from th_e_core.tools import _resample_series, to_date, floor_date, ceil_date
-from th_e_core.system import System
-from th_e_core.cmpt import Photovoltaics
+from corsys.tools import _resample_series, to_date, floor_date, ceil_date
+from corsys.system import System
+from corsys.cmpt import Photovoltaics
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ def process_meteoblue(dir: str = 'Meteoblue',
                       longitude: str | float = None,
                       start: str | pd.Timestamp | dt.datetime = None,
                       end:   str | pd.Timestamp | dt.datetime = None, **_) -> pd.DataFrame:
-    from th_e_core.io._var import WEATHER
+    from corsys.io._var import WEATHER
 
     if latitude is None or longitude is None:
         raise Exception("Unable to process meteoblue data for unconfigured latitude or longitude")

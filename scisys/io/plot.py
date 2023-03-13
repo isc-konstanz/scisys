@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-    th-e-sim.io.plot
-    ~~~~~~~~~~~~~~~~~~~~~
+    scisys.io.plot
+    ~~~~~~~~~~~~~~
 
 
 """
@@ -26,7 +26,7 @@ def print_lineplot(data, index, column, file,
     plt.figure(figsize=[WIDTH, HEIGHT], dpi=120, tight_layout=True)
     color_num = max(len(data.columns) - 1, 1)
     colors = sns.dark_palette(color, n_colors=color_num, reverse=True)
-    plot = sns.lineplot(x=index, y=column, ci='sd',
+    plot = sns.lineplot(x=index, y=column, ci='sd',  # errorbar='sd',
                         data=data,
                         palette=colors,
                         **kwargs)
@@ -41,7 +41,7 @@ def print_barplot(data, index, column, file,
     plt.figure(figsize=[WIDTH, HEIGHT], dpi=120, tight_layout=True)
     color_num = max(len(data.columns) - 1, 1)
     colors = sns.dark_palette(color, n_colors=color_num, reverse=True)
-    plot = sns.barplot(x=index, y=column, ci='sd',
+    plot = sns.barplot(x=index, y=column, ci='sd',  # errorbar='sd',
                        data=data,
                        palette=colors,
                        **kwargs)

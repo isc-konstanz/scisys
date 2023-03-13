@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-    th-e-data.evaluation
-    ~~~~~~~~~~~~~~~~~~~~
+    scisys.evaluation
+    ~~~~~~~~~~~~~~~~~
 
 
 """
@@ -17,14 +17,14 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 
-import th_e_data.io as io
+import scisys.io as io
 # noinspection PyProtectedMember
-from th_e_core.io._var import rename
-from th_e_core.io import DatabaseUnavailableException
-from th_e_core import Settings, System, Configurations
+from corsys.io._var import rename
+from corsys.io import DatabaseUnavailableException
+from corsys import Settings, System, Configurations
 from copy import deepcopy
 
-logger = logging.getLogger('th-e-evaluation')
+logger = logging.getLogger(__name__)
 
 TARGETS = {
     'pv': 'Photovoltaics',

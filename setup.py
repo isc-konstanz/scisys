@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-    th-e-data
-    ~~~~~~~~~
+    scisys
+    ~~~~~~
 
 
 """
@@ -11,26 +11,28 @@ from setuptools import setup, find_namespace_packages
 
 here = path.abspath(path.dirname(__file__))
 info = {}
-with open(path.join("th_e_data", "_version.py")) as f:
+with open(path.join("scisys", "_version.py")) as f:
     exec(f.read(), info)
 
 VERSION = info['__version__']
 
-DESCRIPTION = 'This repository provides a set of data processing functions for several projects of ISC Konstanz.'
+DESCRIPTION = 'This repository provides a set of scientific processing functions for several ' \
+              'energy system projects of ISC Konstanz.'
 
 # Get the long description from the README file
 with open(path.join(here, 'README.md')) as f:
     README = f.read()
 
-NAME = 'th-e-data'
+NAME = 'scisys'
 LICENSE = 'LGPLv3'
 AUTHOR = 'ISC Konstanz'
 MAINTAINER_EMAIL = 'adrian.minde@isc-konstanz.de'
-URL = 'https://github.com/isc-konstanz/th-e-data'
+URL = 'https://github.com/isc-konstanz/scisys'
 
 INSTALL_REQUIRES = [
+    'scipy >= 1.1',
     'tables >= 3.4',
-    "th-e-core @ git+https://github.com/isc-konstanz/th-e-core.git@master"
+    'corsys @ git+https://github.com/isc-konstanz/corsys.git@master'
 ]
 
 EXTRAS_REQUIRE = {
@@ -39,9 +41,9 @@ EXTRAS_REQUIRE = {
              'seaborn >= 0.9']
 }
 
-SCRIPTS = ['bin/th-e-data']
+SCRIPTS = ['bin/scisys']
 
-PACKAGES = find_namespace_packages(include=['th_e_data*'])
+PACKAGES = find_namespace_packages(include=['scisys*'])
 
 SETUPTOOLS_KWARGS = {
     'zip_safe': False,

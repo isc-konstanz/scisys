@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-    th-e-data.build
-    ~~~~~~~~~~~~~~~
+    scisys.build
+    ~~~~~~~~~~~~
     
     
 """
@@ -12,10 +12,10 @@ import logging
 import numpy as np
 import pandas as pd
 import datetime as dt
-from th_e_core import System, Location
-from th_e_core.io import Database
-from th_e_core.configs import Configurations
-from th_e_core.tools import ceil_date, to_date, to_int, to_bool
+from corsys import System, Location
+from corsys.io import Database
+from corsys.configs import Configurations
+from corsys.tools import ceil_date, to_date, to_int, to_bool
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def build(configs: Configurations,
 
 
 def build_lpg(key: str = None, weather: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
-    from th_e_data.process import process_lpg
+    from scisys.process import process_lpg
 
     data = pd.DataFrame()
     if key is None:
@@ -115,7 +115,7 @@ def build_lpg(key: str = None, weather: pd.DataFrame = None, **kwargs) -> pd.Dat
 
 
 def build_opsd(**kwargs) -> pd.DataFrame:
-    from th_e_data.process import process_opsd
+    from scisys.process import process_opsd
     return process_opsd(**kwargs)
 
 
@@ -125,7 +125,7 @@ def build_meteoblue(location: Location, **kwargs) -> pd.DataFrame:
     if 'longitude' not in kwargs:
         kwargs['longitude'] = location.longitude
 
-    from th_e_data.process import process_meteoblue
+    from scisys.process import process_meteoblue
     return process_meteoblue(**kwargs)
 
 
