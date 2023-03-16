@@ -219,17 +219,17 @@ def process_meteoblue(dir: str = 'Meteoblue',
         # data.index = history.index.tz_convert('Europe/Berlin')
         data = data.rename(columns={' Temperature':             'temp_air',
                                     ' Wind Speed':              'wind_speed',
+                                    ' Wind Gust':               'wind_speed_gust',
                                     ' Wind Direction':          'wind_direction',
-                                    ' Wind Gust':               'wind_gust',
                                     ' Relative Humidity':       'relative_humidity',
                                     ' Mean Sea Level Pressure': 'pressure_sea',
                                     ' Shortwave Radiation':     'ghi',
                                     ' DNI - backwards':         'dni',
                                     ' DIF - backwards':         'dhi',
-                                    ' Total Cloud Cover':       'total_clouds',
-                                    ' Low Cloud Cover':         'low_clouds',
-                                    ' Medium Cloud Cover':      'mid_clouds',
-                                    ' High Cloud Cover':        'high_clouds',
+                                    ' Total Cloud Cover':       'cloud_cover',
+                                    ' Low Cloud Cover':         'clouds_low',
+                                    ' Medium Cloud Cover':      'clouds_mid',
+                                    ' High Cloud Cover':        'clouds_high',
                                     ' Total Precipitation':     'precipitation',
                                     ' Snow Fraction':           'snow_fraction'})
 
@@ -240,11 +240,9 @@ def process_meteoblue(dir: str = 'Meteoblue',
                 end = to_date(end)
                 end = ceil_date(end)
 
-        if os.path.isdir(location_dir) and \
-                (start is not None and start < data.index[0]) and \
-                (end is not None and end > data.index[-1]):
+        if os.path.isdir(location_dir) and (end is None or end > data.index[-1]):
             # Delete unavailable column of continuous forecasts
-            del data['wind_gust']
+            del data['wind_speed_gust']
 
             for file in sorted(os.listdir(location_dir)):
                 path = os.path.join(location_dir, file)
