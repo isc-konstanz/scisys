@@ -98,7 +98,7 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
         raise Exception("Unable to process OPSD with unconfigured key")
 
     data.index.rename('time', inplace=True)
-    data = data.filter(regex=key)  # .dropna(how='all')
+    data = data.filter(regex=key).dropna(how='all')
     if data.empty:
         raise Exception("Unable to find OPSD household: " + key)
 
@@ -129,7 +129,7 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
         if 'pv_energy' not in data.columns:
             columns_power.append(Photovoltaics.POWER)
             columns_energy.append(Photovoltaics.ENERGY)
-            data[Photovoltaics.ENERGY] = _process_energy(data_pv.fillna(0).sum(axis=1))
+            data[Photovoltaics.ENERGY] = _process_energy(data_pv.sum(axis=1))
             data[Photovoltaics.POWER] = _process_power(data[Photovoltaics.ENERGY])
 
     data[System.ENERGY_EL] = data[System.ENERGY_EL_IMP]
@@ -167,7 +167,7 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
 
     data[System.POWER_EL] = _process_power(data[System.ENERGY_EL])
 
-    return data[columns_power]  # + columns_energy]
+    return data[columns_power].dropna(how='all')  # + columns_energy]
 
 
 # noinspection PyProtectedMember
@@ -342,26 +342,33 @@ def _process_series(data: pd.Series, resolution: int = 1, fill_gaps: bool = Fals
     return data[start:end]
 
 
-def _process_energy(energy: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
-    energy = energy.fillna(0)
-    return energy - energy[0]
+def _process_energy(energy: pd.Series) -> pd.Series:
+    energy_first = energy.dropna(axis=0).index[0]
+    # energy[energy_first:] = energy[energy_first:].fillna(0)
+    return energy - energy[energy_first]
 
 
 # noinspection PyShadowingBuiltins
 def _process_power(energy: pd.DataFrame | pd.Series, filter: bool = True) -> pd.DataFrame | pd.Series:
+    energy_index = energy.index
+    energy_first = energy.dropna(axis=0).index[0]
+    energy_empty = energy[energy_first:].isna().shift(1).fillna(True)
+    energy = energy[energy_first:].fillna(0)
     delta_energy = energy.diff()
     delta_index = pd.Series(energy.index, index=energy.index)
     delta_index = (delta_index - delta_index.shift(1))/np.timedelta64(1, 'h')
 
-    data_power = (delta_energy/delta_index).fillna(0)*1000
-
+    data_power = (delta_energy/delta_index)*1000
+    data_power = data_power[~energy_empty].dropna()
     if filter:
         from scipy import signal
         b, a = signal.butter(1, 0.25)
-        data_power = signal.filtfilt(b, a, data_power, method='pad', padtype='even', padlen=15)
-        data_power[data_power < 0.1] = 0
-
-    return data_power
+        data_filt = signal.filtfilt(b, a, data_power, method='pad', padtype='even', padlen=15)
+        data_power = pd.Series(data=data_filt,
+                               index=data_power.index,
+                               name=data_power.name)
+        data_power[abs(data_power < 0.1)] = 0
+    return data_power.reindex(energy_index)
 
 
 def _process_gaps(data: pd.DataFrame | pd.Series, **kwargs) -> pd.DataFrame | pd.Series:
