@@ -249,6 +249,10 @@ def process_meteoblue(dir: str = 'Meteoblue',
                 if os.path.isfile(path) and file.endswith('.csv'):
                     forecast = pd.read_csv(path, index_col='time', parse_dates=['time'])
                     forecast = forecast.rename(columns={'humidity_rel': 'relative_humidity',
+                                                        'total_clouds': 'cloud_cover',
+                                                        'low_clouds':   'clouds_low',
+                                                        'mid_clouds':   'clouds_mid',
+                                                        'high_clouds':  'clouds_high',
                                                         'rain':         'precipitation',
                                                         'rain_shower':  'precipitation_convective',
                                                         'rain_prob':    'precipitation_probability',
