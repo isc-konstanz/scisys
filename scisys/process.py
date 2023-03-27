@@ -15,11 +15,11 @@ import datetime as dt
 import warnings
 import logging
 
-from typing import Union
 from copy import deepcopy
+from dateutil.tz import tzoffset
 
 # noinspection PyProtectedMember
-from corsys.tools import _resample_series, to_date, floor_date, ceil_date
+from corsys.tools import _resample_series, to_date, ceil_date
 from corsys.system import System
 from corsys.cmpt import Photovoltaics
 
@@ -29,34 +29,36 @@ logger = logging.getLogger(__name__)
 # noinspection PyShadowingBuiltins
 def process_lpg(key=None, dir='LPG',
                 hot_water_factor=2793.3,
-                timezone: tz.timezone = tz.timezone('Europe/Berlin'), sep=';', **_) -> pd.DataFrame:
+                index_column: str = 'Time',
+                index_format: str = '%d/%m/%Y %H:%M',
+                timezone: tz.timezone = tz.timezone('Europe/Berlin'),
+                sep=';', **_) -> pd.DataFrame:
     if key is not None:
         dir = os.path.join(dir, key)
 
     if not os.path.isdir(dir):
         raise Exception("Unable to access LPG directory: {0}".format(dir))
 
-    def read(file: str, index='Time'):
-        return pd.read_csv(os.path.join(dir, 'Results', file), skipinitialspace=True, low_memory=False, sep=sep,
-                           index_col=[index], parse_dates=[index])
+    def read(file: str, columns: dict):
+        read_data = pd.read_csv(os.path.join(dir, 'Results', file), skipinitialspace=True, low_memory=False, sep=sep)
+        read_data[index_column] = pd.to_datetime(read_data[index_column], format=index_format)
+        read_data.set_index(index_column, inplace=True)
+        read_data.index = read_data.index.tz_localize(tzoffset('UTC+1', 3600)).tz_convert(timezone)
+        return read_data[columns.keys()].rename(columns=columns)
 
-    data_el = read('SumProfiles.Electricity.csv')
-    data_el = data_el[['Sum [kWh]']].rename(columns={'Sum [kWh]': 'el_energy_delta'})
+    data_el = read('SumProfiles.Electricity.csv',
+                   columns={'Sum [kWh]': 'el_energy_delta'})
 
     # data_th_ht = read('SumProfiles.Space Heating.csv')
     # data_th_ht = data_th_ht[['Sum [kWh]']].rename(columns={'Sum [kWh]': 'th_ht_energy_delta'})
-    data_th_ht = read('DeviceProfiles.House.Space Heating.csv')
-    data_th_ht = data_th_ht[['House - Space Heating Location - Space Heating [kWh]']]\
-        .rename(columns={'House - Space Heating Location - Space Heating [kWh]': 'th_ht_energy_delta'})
+    data_th_ht = read('DeviceProfiles.House.Space Heating.csv',
+                      columns={'House - Space Heating Location - Space Heating [kWh]': 'th_ht_energy_delta'})
 
-    data_th_dom = read('SumProfiles.Hot water.csv')
-    data_th_dom = data_th_dom[['Sum [L]']].rename(columns={'Sum [L]': 'th_ht_liters'})
+    data_th_dom = read('SumProfiles.Hot water.csv',
+                       columns={'Sum [L]': 'th_ht_liters'})
 
     data = pd.concat([data_el, data_th_ht, data_th_dom], axis=1)
-
     data.index.name = 'time'
-    data.index = data.index.tz_localize(timezone, ambiguous="NaT", nonexistent="NaT")
-    data = data[pd.notnull(data.index)]
 
     data_res = data.index[1] - data.index[0]
     data_time = pd.DataFrame(index=data.index, data=data.index)
