@@ -147,6 +147,11 @@ class Evaluation:
         # Prepare the data to contain only necessary columns and rows
         data = self._select(results)
 
+        if data.isna().values.any():
+            data_nan = data[data.isna().any(axis='columns')]
+            data.dropna(how='any', inplace=True)
+            logger.warning(f"Results datastore contains {len(data_nan)} invalid values")
+
         evaluation = self._process(data)
         summary = self._summarize(evaluation)
 
@@ -352,8 +357,15 @@ class Evaluation:
         elif 'month' in self.group:
             data['month'] = data.index.month
 
+        if self._target+'_est' in data.columns:
+            logger.warning(f"Results datastore containing deprecated target name {self._target+'_est'}."
+                           " Please generate results again.")
+            data.rename(columns={self._target: self._target+'_ref'}, inplace=True)
+            data.rename(columns={self._target+'_est': self._target}, inplace=True)
+
         for condition in self.condition:
             data.query(condition, inplace=True)
+
         return data[self.columns]
 
     def _process(self, data: pd.DataFrame) -> pd.Series:
