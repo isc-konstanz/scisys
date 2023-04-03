@@ -20,16 +20,14 @@ from corsys.tools import ceil_date, to_date, to_int, to_bool
 logger = logging.getLogger(__name__)
 
 
-# noinspection PyShadowingBuiltins
+# noinspection PyShadowingBuiltins, SpellCheckingInspection
 def build(configs: Configurations,
           database: Database,
           start: str | pd.Timestamp | dt.datetime = None,
           end:   str | pd.Timestamp | dt.datetime = None, **kwargs) -> Optional[pd.DataFrame]:
-    if database is None:
-        return
 
-    if not configs.has_section('Data'):
-        return
+    if database is None or not database.enabled or not configs.has_section('Data'):
+        return None
 
     buildargs = dict(configs.items('Data'))
     rename = to_bool(buildargs.pop('rename', False))
@@ -48,7 +46,7 @@ def build(configs: Configurations,
     buildargs.update(kwargs)
 
     if database.exists(**buildargs):
-        return
+        return database.read(**buildargs)
 
     type = configs.get('Data', 'type', fallback=None).strip()
     # types = configs.get('Data', 'type', fallback='default')
