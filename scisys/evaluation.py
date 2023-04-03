@@ -108,7 +108,7 @@ class Evaluation:
     @classmethod
     def read(cls, settings: Settings) -> Evaluations:
         evaluations = []
-        evaluation_configs = Configurations.from_configs(settings, 'evaluations.cfg', require=False)
+        evaluation_configs = Configurations('evaluations.cfg', require=False)
         for evaluation in [s for s in evaluation_configs.sections() if s.lower() != 'general']:
             evaluation_args = dict(evaluation_configs[evaluation].items())
             evaluations += cls._read(evaluation, **evaluation_args)
@@ -441,7 +441,6 @@ class Evaluation:
                 ['hour',
                  'day_of_week',
                  'day_of_year',
-                 'day_of_year',
                  'month']:
             return False
         return True
@@ -575,14 +574,14 @@ class Results(MutableMapping):
     def set(self, key: str, data: pd.DataFrame, concat: bool = True) -> None:
         data.to_hdf(self._datastore, f"/{key}")
         if concat:
-            self.data = pd.concat([self.data, data], axis=0)
+            self.data = pd.concat([self.data, data], axis='index')
         if self._database is not None and self.verbose:
             self._database.write(data, file=f"{key}.csv", rename=False)
 
     def load(self, key: str) -> pd.DataFrame:
         data = self.get(key)
 
-        self.data = pd.concat([self.data, data], axis=0)
+        self.data = pd.concat([self.data, data], axis='index')
         return data
 
     # noinspection PyTypeChecker
