@@ -549,7 +549,7 @@ class Results(MutableMapping):
         self.verbose = verbose
 
     def __setitem__(self, key: str, data: pd.DataFrame) -> None:
-        self.set(key, data)
+        self.set(key, data, how='concat')
 
     def __getitem__(self, key: str) -> pd.DataFrame:
         return self.get(key)
@@ -583,17 +583,28 @@ class Results(MutableMapping):
 
                 io.write_csv(self.system, results_data, results_file)
 
-    def set(self, key: str, data: pd.DataFrame, concat: bool = True) -> None:
+    def set(self, key: str, data: pd.DataFrame, how: str = None) -> None:
         data.to_hdf(self._datastore, f"/{key}")
-        if concat:
-            self.data = pd.concat([self.data, data], axis='index')
         if self._database is not None and self.verbose:
             self._database.write(data, file=f"{key}.csv", rename=False)
 
-    def load(self, key: str) -> pd.DataFrame:
-        data = self.get(key)
+        if how is None:
+            return
+        elif how == 'concat':
+            self.data = pd.concat([self.data, data], axis='index')
+        elif how == 'combine':
+            self.data = data.combine_first(self.data)
+        else:
+            raise ValueError(f"invalid how option: {how}")
 
-        self.data = pd.concat([self.data, data], axis='index')
+    def load(self, key: str, how: str = 'concat') -> pd.DataFrame:
+        data = self.get(key)
+        if how == 'concat':
+            self.data = pd.concat([self.data, data], axis='index')
+        elif how == 'combine':
+            self.data = data.combine_first(self.data)
+        else:
+            raise ValueError(f"invalid how option: {how}")
         return data
 
     # noinspection PyTypeChecker
