@@ -586,7 +586,11 @@ class Results(MutableMapping):
     def set(self, key: str, data: pd.DataFrame, how: str = None) -> None:
         data.to_hdf(self._datastore, f"/{key}")
         if self._database is not None and self.verbose:
-            self._database.write(data, file=f"{key}.csv", rename=False)
+            data_file = os.path.join(self._database.dir, f"{key}.csv")
+            data_dir = os.path.dirname(data_file)
+            if not os.path.isdir(data_dir):
+                os.makedirs(data_dir, exist_ok=True)
+            self._database.write(data, file=data_file, rename=False)
 
         if how is None:
             return
