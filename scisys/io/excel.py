@@ -74,8 +74,19 @@ def write_excel(summary, data_frames, dir: str = 'data', file: str = 'summary.xl
                     header_cell.border = border
 
                 if data_sheet.title == 'Summary' or column == 0:
-                    data_column_width = 0
+                    data_column_widths = []
+                    for header_row in range(1, header_len + 1):
+                        header_cell = data_sheet[header_row][column]
+                        header_cell_str = str(header_cell.value)
+                        for header_cell_line in header_cell_str.split('\n'):
+                            header_column_width = len(header_cell_line)
+                            if data_sheet.title == 'Summary' and column > 0 and \
+                                    header_cell_str in summary:
+                                header_column_width /= len(summary[header_cell_str].columns)
+                            data_column_widths.append(header_column_width)
+
                     for data_cell in data_sheet[get_column_letter(column + 1)]:
                         data_cell.border = border
-                        data_column_width = max(data_column_width, len(str(data_cell.value)))
-                    data_sheet.column_dimensions[get_column_letter(column + 1)].width = data_column_width + 2
+                        if data_cell.row > header_len:
+                            data_column_widths.append(len(str(data_cell.value)))
+                    data_sheet.column_dimensions[get_column_letter(column + 1)].width = max(data_column_widths) + 2
