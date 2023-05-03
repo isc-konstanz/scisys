@@ -21,7 +21,7 @@ from dateutil.tz import tzoffset
 # noinspection PyProtectedMember
 from corsys.tools import _resample_series, to_date, ceil_date
 from corsys.system import System
-from corsys.cmpt import Photovoltaics
+from corsys.cmpt import Photovoltaic
 
 logger = logging.getLogger(__name__)
 
@@ -129,14 +129,14 @@ def process_opsd(key: str = None, dir: str = 'OPSD', **_) -> pd.DataFrame:
             data[column_power] = _process_power(data_pv[column_energy])
 
         if 'pv_energy' not in data.columns:
-            columns_power.append(Photovoltaics.POWER)
-            columns_energy.append(Photovoltaics.ENERGY)
-            data[Photovoltaics.ENERGY] = _process_energy(data_pv.sum(axis=1))
-            data[Photovoltaics.POWER] = _process_power(data[Photovoltaics.ENERGY])
+            columns_power.append(Photovoltaic.POWER)
+            columns_energy.append(Photovoltaic.ENERGY)
+            data[Photovoltaic.ENERGY] = _process_energy(data_pv.sum(axis=1))
+            data[Photovoltaic.POWER] = _process_power(data[Photovoltaic.ENERGY])
 
     data[System.ENERGY_EL] = data[System.ENERGY_EL_IMP]
     if 'pv_energy' in data.columns:
-        pv_cons = data[Photovoltaics.ENERGY]
+        pv_cons = data[Photovoltaic.ENERGY]
         if 'grid_export_energy' in data.columns:
             pv_cons -= data[System.ENERGY_EL_EXP]
         data[System.ENERGY_EL] += pv_cons
