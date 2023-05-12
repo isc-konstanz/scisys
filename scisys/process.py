@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 def process_lpg(key=None, dir='LPG',
                 hot_water_factor=2793.3,
                 index_column: str = 'Time',
-                index_format: str = '%d/%m/%Y %H:%M',
+                index_format: str = '%d.%m.%Y %H:%M',
                 timezone: tz.timezone = tz.timezone('Europe/Berlin'),
                 sep=';', **_) -> pd.DataFrame:
     if key is not None:
@@ -282,9 +282,9 @@ def process_meteoblue(dir: str = 'Meteoblue',
 
         for irr in ['ghi', 'gni', 'dni', 'dhi', 'etr']:
             if irr in data.columns:
-                data[data[irr] < 0] = 0
+                data.loc[data[irr] < 1e-3, irr] = 0
             if irr+'_instant' in data.columns:
-                data[data[irr+'_instant'] < 0] = 0
+                data.loc[data[irr+'_instant'] < 1e-3, irr+'_instant'] = 0
 
         if 'snow_fraction' in data.columns:
             data.snow_fraction = data.snow_fraction.round()

@@ -66,6 +66,8 @@ def build(configs: Configurations,
         data = build_opsd(**buildargs)
     elif type.lower() == 'meteoblue':
         data = build_meteoblue(**buildargs)
+    elif type.lower() == 'brightsky':
+        data = build_brightsky(**buildargs)
     else:
         raise ValueError('Invalid data build type: {}'.format(type))
 
@@ -112,21 +114,6 @@ def build_lpg(key: str = None, weather: pd.DataFrame = None, **kwargs) -> pd.Dat
     return data
 
 
-def build_opsd(**kwargs) -> pd.DataFrame:
-    from scisys.process import process_opsd
-    return process_opsd(**kwargs)
-
-
-def build_meteoblue(location: Location, **kwargs) -> pd.DataFrame:
-    if 'latitude' not in kwargs:
-        kwargs['latitude'] = location.latitude
-    if 'longitude' not in kwargs:
-        kwargs['longitude'] = location.longitude
-
-    from scisys.process import process_meteoblue
-    return process_meteoblue(**kwargs)
-
-
 # noinspection PyShadowingBuiltins, PyPackageRequirements, SpellCheckingInspection
 def _build_oemof(annual_demand: float,
                  weather: pd.DataFrame,
@@ -155,3 +142,90 @@ def _build_oemof(annual_demand: float,
     data = data.rolling(window=data_res, win_type="gaussian", center=True).mean(std=20).fillna(data)
 
     return data
+
+
+def build_opsd(**kwargs) -> pd.DataFrame:
+    from scisys.process import process_opsd
+    return process_opsd(**kwargs)
+
+
+def build_meteoblue(location: Location, **kwargs) -> pd.DataFrame:
+    if 'latitude' not in kwargs:
+        kwargs['latitude'] = location.latitude
+    if 'longitude' not in kwargs:
+        kwargs['longitude'] = location.longitude
+
+    from scisys.process import process_meteoblue
+    return process_meteoblue(**kwargs)
+
+
+def build_brightsky(location: Location,
+                    start: str | pd.Timestamp | dt.datetime,
+                    end: str | pd.Timestamp | dt.datetime,
+                    address: str = 'https://api.brightsky.dev/', **_) -> pd.DataFrame:
+    import json
+    import requests
+    from corsys.weather import Weather
+
+    date = start
+    date_last = end + dt.timedelta(days=1)
+
+    parameters = {
+        'date': date.strftime('%Y-%m-%d'),
+        'last_date': date_last.strftime('%Y-%m-%d'),
+        'lat': location.latitude,
+        'lon': location.longitude,
+        'tz': location.timezone.zone
+    }
+    response = requests.get(address + 'weather', params=parameters)
+
+    if response.status_code != 200:
+        raise requests.HTTPError("Response returned with error " + str(response.status_code) + ": " +
+                                 response.reason)
+
+    data = json.loads(response.text)
+    data = pd.DataFrame(data['weather'])
+    data['timestamp'] = pd.DatetimeIndex(pd.to_datetime(data['timestamp'], utc=True))
+    data = data.set_index('timestamp').tz_convert(location.timezone)
+    data.index.name = 'time'
+
+    if data[Weather.CLOUD_COVER].isna().any():
+        data[Weather.CLOUD_COVER].interpolate(method='linear', inplace=True)
+
+    data.rename(columns={
+        'solar': Weather.GHI,
+        'temperature': Weather.TEMP_AIR,
+        'pressure_msl': Weather.PRESSURE_SEA,
+        'wind_gust_speed': Weather.WIND_SPEED_GUST,
+        'wind_gust_direction': Weather.WIND_DIRECTION_GUST
+    }, inplace=True)
+
+    hours = pd.Series(data=data.index, index=data.index).diff().bfill().dt.total_seconds() / 3600.
+
+    # Convert global horizontal irradiance from kWh/m^2 to W/m^2
+    data[Weather.GHI] = data[Weather.GHI]*hours*1000
+
+    data = data[[Weather.GHI,
+                 Weather.TEMP_AIR,
+                 Weather.TEMP_DEW_POINT,
+                 Weather.HUMIDITY_REL,
+                 Weather.PRESSURE_SEA,
+                 Weather.WIND_SPEED,
+                 Weather.WIND_SPEED_GUST,
+                 Weather.WIND_DIRECTION,
+                 Weather.WIND_DIRECTION_GUST,
+                 Weather.CLOUD_COVER,
+                 Weather.SUNSHINE,
+                 Weather.VISIBILITY,
+                 Weather.PRECIPITATION,
+                 Weather.PRECIPITATION_PROB]]
+
+    data.dropna(how='all', axis='columns', inplace=True)
+
+    # Upsample forecast to a resolution of 1 minute. Use the advanced Akima interpolator for best results
+    data = data.resample('1Min').interpolate(method='akima')
+
+    # Drop interpolated irradiance values below 0
+    data.loc[data[Weather.GHI] < 1e-3, Weather.GHI] = 0
+
+    return data[start:end]
