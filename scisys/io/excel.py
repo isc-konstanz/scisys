@@ -52,10 +52,13 @@ def write_excel(summary, data_frames, dir: str = 'data', file: str = 'summary.xl
         # Set column width and header coloring
         for data_sheet in summary_book:
             if data_sheet.title == 'Summary':
-                data_sheet.delete_rows(3, 1)
                 header_len = summary.columns.nlevels
+                data_sheet.delete_rows(3, 1)
             else:
                 header_len = data_frames[data_sheet.title].columns.nlevels
+                if header_len > 1:
+                    data_sheet[2][0].value = data_sheet[3][0].value
+                    data_sheet.delete_rows(3, 1)
 
             header_font = Font(name="Calibri Light", size=12, color='333333')
 
@@ -73,7 +76,7 @@ def write_excel(summary, data_frames, dir: str = 'data', file: str = 'summary.xl
                     header_cell.font = header_font
                     header_cell.border = border
 
-                if data_sheet.title == 'Summary' or column == 0:
+                if header_len > 1 or column == 0:
                     data_column_widths = []
                     for header_row in range(1, header_len + 1):
                         header_cell = data_sheet[header_row][column]

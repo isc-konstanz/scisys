@@ -65,7 +65,9 @@ class Evaluations(Sequence):
                 if duration_column not in duration_columns:
                     duration_columns.append(duration_column)
             for evaluation in result_evaluations:
-                evaluation_columns.append((evaluation.header, evaluation.name))
+                evaluation_column = (evaluation.header, evaluation.name)
+                if evaluation_column not in evaluation_columns:
+                    evaluation_columns.append(evaluation_column)
                 evaluations[evaluation.name] = pd.DataFrame()
         columns = duration_columns + [('Total', 'Weighted')]
         for column in list(dict.fromkeys([c for c, _ in evaluation_columns])):
@@ -84,9 +86,13 @@ class Evaluations(Sequence):
             for evaluation in result_evaluations:
                 kpi, kpi_data = evaluation(result)
                 kpi_data = kpi_data.to_frame()
-                kpi_data.columns = [evaluation.header]
+                kpi_column_name = evaluation.header
+                if len(results) > 1:
+                    kpi_data.columns = pd.MultiIndex.from_tuples([(evaluation.header, result.system.name)])
+                else:
+                    kpi_data.columns = [kpi_column_name]
                 kpi_data.index.name = rename(evaluation.group)
-                evaluations[evaluation.name] = pd.concat([evaluations[evaluation.name], kpi_data], axis=1)
+                evaluations[evaluation.name] = pd.concat([evaluations[evaluation.name], kpi_data], axis='columns')
                 if kpi:
                     summary.loc[result.name, (evaluation.header, evaluation.name)] = kpi
 
@@ -385,7 +391,8 @@ class Evaluation:
             raise ValueError("Unable to process bins for invalid value: " + str(self.group_bins))
 
         if self.target == self.group:
-            bin_data, bin_edges = np.histogram(data[self.target], bins=self.group_bins)
+            bin_max = data[self._target+'_ref'].quantile(.95)
+            bin_data, bin_edges = np.histogram(data[self.target], bins=self.group_bins, range=(-bin_max, bin_max))
             bin_vals = 0.5*(bin_edges[1:]+bin_edges[:-1])
         else:
             bin_data = []
