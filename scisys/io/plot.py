@@ -68,3 +68,42 @@ def print_boxplot(data, index, column, file,
     fig = plot.figure
     fig.savefig(file)
     plt.close(fig)
+
+
+def print_histograms(data, bins=100, path=''):
+    for column in data.columns:  # create 100 equal space bin values per column.
+        bin_data = []
+        bin_domain = data[column].max() - data[column].min()
+        bin_step = bin_domain / bins
+
+        counter = data[column].min()
+        for i in range(bins):
+            bin_data.append(counter)
+            counter = counter + bin_step
+
+        # Add the last value of the counter
+        bin_data.append(counter)
+
+        bin_values, bin_data, patches = plt.hist(data[column], bins=bin_data)
+        count_range = max(bin_values) - min(bin_values)
+        sorted_values = list(bin_values)
+        sorted_values.sort(reverse=True)
+
+        # Scale plots by stepping through sorted bin_data
+        for i in range(len(sorted_values) - 1):
+            if abs(sorted_values[i] - sorted_values[i + 1]) / count_range < 0.80:
+                continue
+            else:
+                plt.ylim([0, sorted_values[i + 1] + 10])
+                break
+
+        # Save histogram to appropriate folder
+        path_dist = os.path.join(path, 'dist')
+        path_file = os.path.join(path_dist, '{}.png'.format(column))
+        if not os.path.isdir(path_dist):
+            os.makedirs(path_dist, exist_ok=True)
+
+        plt.title(r'Histogram of '+column)
+        plt.savefig(path_file)
+        plt.close()
+        plt.clf()
