@@ -6,23 +6,21 @@
 
 """
 from __future__ import annotations
-from collections.abc import Sequence, Mapping, MutableMapping
+from collections.abc import Sequence
 from typing import Tuple, List, Iterator
 
 import os
 import re
-import json
 import logging
 import numpy as np
 import pandas as pd
-import datetime as dt
 
 import scisys.io as io
 # noinspection PyProtectedMember
 from corsys.io._var import rename
-from corsys.io import DatabaseUnavailableException
-from corsys import Settings, System, Configurations
+from corsys import Settings, Configurations
 from copy import deepcopy
+from .results import Results
 
 logger = logging.getLogger(__name__)
 
@@ -388,7 +386,7 @@ class Evaluation:
     # noinspection SpellCheckingInspection
     def _process_bins(self, data: pd.DataFrame) -> pd.Series:
         if not self.group_bins or self.group_bins <= 1:
-            raise ValueError("Unable to process bins for invalid value: " + str(self.group_bins))
+            raise ValueError("Unable to build bins for invalid value: " + str(self.group_bins))
 
         if self.target == self.group:
             bin_max = data[self._target+'_ref'].quantile(.95)
@@ -463,169 +461,3 @@ class Evaluation:
                  'month']:
             return False
         return True
-
-
-class Durations(Mapping):
-
-    def __init__(self, system: System) -> None:
-        self._file = os.path.join(system.configs.dirs.data, 'results', 'results.json')
-        if os.path.isfile(self._file):
-            with open(self._file, 'r', encoding='utf-8') as f:
-                self._durations = json.load(f)
-                for duration in self._durations.values():
-                    def _datetime(key):
-                        return dt.datetime.strptime(duration[key], '%Y-%m-%d %H:%M:%S.%f')
-
-                    if 'start' in duration:
-                        duration['start'] = _datetime('start')
-                    if 'end' in duration:
-                        duration['end'] = _datetime('end')
-        else:
-            self._durations = {}
-
-    def __repr__(self) -> str:
-        return str(self._durations)
-
-    def __iter__(self) -> Iterator:
-        return iter(self._durations)
-
-    def __len__(self) -> int:
-        return len(self._durations)
-
-    def __getitem__(self, key: str) -> float:
-        return self._durations[key]['minutes']
-
-    def start(self, key: str) -> None:
-        if key not in self._durations:
-            self._durations[key] = {}
-        if 'minutes' not in self._durations[key]:
-            self._durations[key]['minutes'] = 0
-        if 'end' in self._durations[key]:
-            del self._durations[key]['end']
-
-        self._durations[key]['start'] = dt.datetime.now()
-
-    def stop(self, key: str = None) -> None:
-        if key is None:
-            for key in self.keys():
-                self._stop(key)
-        else:
-            self._stop(key)
-
-        self._write()
-
-    def _stop(self, key: str = None) -> None:
-        if key not in self._durations:
-            raise ValueError("No duration found for key: \"{}\"".format(key))
-        if 'start' not in self._durations[key]:
-            raise ValueError("Timer for key \"{}\" not started yet".format(key))
-
-        self._durations[key]['end'] = dt.datetime.now()
-
-        minutes = self._durations[key]['minutes'] if 'minutes' in self._durations[key] else 0
-        minutes += round((self._durations[key]['end'] - self._durations[key]['start']).total_seconds() / 60.0, 6)
-        self._durations[key]['minutes'] = minutes
-
-    def _write(self) -> None:
-        with open(self._file, 'w', encoding='utf-8') as f:
-            json.encoder.FLOAT_REPR = lambda o: format(o, '.3f')
-            json.dump(self._durations, f, indent=4, default=str, ensure_ascii=False)
-
-
-class Results(MutableMapping):
-
-    def __init__(self, system: System, verbose: bool = False) -> None:
-        self.system = system
-        system_dir = system.configs.dirs.data
-        data_dir = os.path.join(system_dir, 'results')
-        if not os.path.isdir(data_dir):
-            os.makedirs(data_dir, exist_ok=True)
-
-        self._datastore = pd.HDFStore(os.path.join(data_dir, 'results.h5'))
-        try:
-            self._database = deepcopy(system.database)
-            self._database.dir = data_dir
-            self._database.enabled = True
-
-        except DatabaseUnavailableException:
-            self._database = None
-
-        self.data = pd.DataFrame()
-        self.durations = Durations(system)
-
-        self.verbose = verbose
-
-    def __setitem__(self, key: str, data: pd.DataFrame) -> None:
-        self.set(key, data, how='concat')
-
-    def __getitem__(self, key: str) -> pd.DataFrame:
-        return self.get(key)
-
-    def __delitem__(self, key: str) -> None:
-        del self._datastore[key]
-
-    def __iter__(self):
-        return iter(self._datastore)
-
-    def __len__(self) -> int:
-        return len(self._datastore)
-
-    def __contains__(self, key: str) -> bool:
-        return f"/{key}" in self._datastore
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-
-    def close(self):
-        if self._database is not None:
-            self._database.close()
-        self._datastore.close()
-        self.durations.stop()
-        if self.verbose:
-            for results_err in [c for c in self.data.columns if c.endswith('_err')]:
-                results_file = os.path.join('results',
-                                            'results_' + results_err.replace('_err', '').replace('_power', ''))
-                results_data = self.data.reset_index().drop_duplicates(subset='time', keep='last')\
-                                        .set_index('time').sort_index()
-
-                io.write_csv(self.system, results_data, results_file)
-
-    def set(self, key: str, data: pd.DataFrame, how: str = None) -> None:
-        data.to_hdf(self._datastore, f"/{key}")
-        if self._database is not None and self.verbose:
-            data_file = os.path.join(self._database.dir, f"{key}.csv")
-            data_dir = os.path.dirname(data_file)
-            if not os.path.isdir(data_dir):
-                os.makedirs(data_dir, exist_ok=True)
-            self._database.write(data, file=data_file, rename=False)
-
-        if how is None:
-            return
-        elif how == 'concat':
-            self.data = pd.concat([self.data, data], axis='index')
-        elif how == 'combine':
-            self.data = data.combine_first(self.data)
-        else:
-            raise ValueError(f"invalid how option: {how}")
-
-    def load(self, key: str, how: str = 'concat') -> pd.DataFrame:
-        data = self.get(key)
-        if how == 'concat':
-            self.data = pd.concat([self.data, data], axis='index')
-        elif how == 'combine':
-            self.data = data.combine_first(self.data)
-        else:
-            raise ValueError(f"invalid how option: {how}")
-        return data
-
-    # noinspection PyTypeChecker
-    def get(self, key: str) -> pd.DataFrame:
-        return self._datastore.get(f"/{key}")
-
-    @property
-    def id(self):
-        return self.system.id
-
-    @property
-    def name(self):
-        return self.system.name
