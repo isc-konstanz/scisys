@@ -101,6 +101,10 @@ class Evaluations(Sequence):
 
             summary.loc[result.name, ('Total', 'Weighted')] = kpi_total
 
+        if summary.drop('Total',           axis='columns', level=0, errors='ignore')\
+                  .drop('Durations [min]', axis='columns', level=0, errors='ignore').empty:
+            return
+
         io.write_excel(summary, evaluations, self._evaluation_dir)
 
     def _get_valid(self, results: Results) -> List[Evaluation]:
