@@ -178,10 +178,15 @@ class Evaluation:
 
     @property
     def columns(self):
-        return [self._target,
-                self._target+'_ref',
-                self._target+'_err',
-                self.group]
+        columns = [self._target,
+                   self._target+'_ref',
+                   self._target+'_err',
+                   self.group]
+        for condition in self.condition:
+            condition_column = re.split(' |!=|==|>=|<=|<|>', condition)[0]
+            if condition_column not in columns:
+                columns.append(condition_column)
+        return columns
 
     @property
     def header(self) -> str:
@@ -352,13 +357,15 @@ class Evaluation:
 
     def _select(self, results: Results) -> pd.DataFrame:
         data = deepcopy(results.data)
-        if 'hour' in self.group:
+
+        columns = self.columns
+        if 'hour' in columns:
             data['hour'] = data.index.hour
-        elif 'day_of_week' in self.group:
+        if 'day_of_week' in columns:
             data['day_of_week'] = data.index.day_of_week
-        elif 'day_of_year' in self.group:
+        if 'day_of_year' in columns:
             data['day_of_year'] = data.index.day_of_year
-        elif 'month' in self.group:
+        if 'month' in columns:
             data['month'] = data.index.month
 
         if self._target+'_est' in data.columns:
@@ -370,7 +377,7 @@ class Evaluation:
         for condition in self.condition:
             data.query(condition, inplace=True)
 
-        return data[self.columns]
+        return data[columns]
 
     def _process(self, data: pd.DataFrame) -> pd.Series:
         data = deepcopy(data)
