@@ -32,7 +32,7 @@ URL = 'https://github.com/isc-konstanz/scisys'
 INSTALL_REQUIRES = [
     'scipy >= 1.1',
     'tables >= 3.4',
-    'corsys @ git+https://github.com/isc-konstanz/corsys.git@stable'
+    'corsys @ git+https://github.com/isc-konstanz/corsys.git@v0.8.1'
 ]
 
 EXTRAS_REQUIRE = {
