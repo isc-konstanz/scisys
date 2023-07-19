@@ -35,6 +35,7 @@ class Evaluations(Sequence):
 
     # noinspection PyShadowingBuiltins
     def __init__(self, evaluations: List[Evaluation], dir: str = 'data') -> None:
+        super().__init__()
         self._evaluations = evaluations
         self._evaluation_dir = dir
 
@@ -115,10 +116,12 @@ class Evaluation:
 
     @classmethod
     def read(cls, settings: Settings) -> Evaluations:
+        interval = settings.getint(Configurations.GENERAL, 'interval', fallback=None)
         evaluations = []
         evaluation_configs = Configurations('evaluations.cfg', require=False)
         for evaluation in [s for s in evaluation_configs.sections() if s.lower() != 'general']:
             evaluation_args = dict(evaluation_configs[evaluation].items())
+            evaluation_args['interval'] = interval
             evaluations += cls._read(evaluation, **evaluation_args)
 
         return Evaluations(evaluations, settings.dirs.data)
@@ -139,7 +142,8 @@ class Evaluation:
                  summary: str = 'mbe',
                  metric: str = 'mbe',
                  weight: float = 1,
-                 plot: str = None, **_) -> None:
+                 plot: str = None,
+                 **kwargs) -> None:
 
         self.name = name
         self.target = target
@@ -150,6 +154,18 @@ class Evaluation:
         self.summary = summary
         self.metric = metric
         self.plot = plot
+
+        if 'interval' in kwargs and kwargs['interval'] > 1:
+            # Verify forecast horizon condition to be greater than execution interval
+            horizon_min = kwargs['interval']/60
+            for condition in self.condition:
+                condition_parts = re.split(' |!=|==|>=|<=|<|>', condition)
+                if condition_parts[0] == 'horizon' and int(condition_parts[-1]) < horizon_min:
+                    condition_index = self._condition.index(condition)
+                    condition = condition[:condition.rfind(condition_parts[-1])] + str(horizon_min)
+                    self._condition[condition_index] = condition
+
+                    logger.debug(f'Evaluation "{self.name}" horizon condition too small for {horizon_min}h interval')
 
     def __call__(self, results: Results) -> Tuple[float, pd.Series]:
         # Prepare the data to contain only necessary columns and rows
