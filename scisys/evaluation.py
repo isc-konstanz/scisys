@@ -20,6 +20,7 @@ import scisys.io as io
 from corsys.io._var import rename
 from corsys import Settings, Configurations
 from copy import deepcopy
+from math import sqrt
 from .results import Results
 
 logger = logging.getLogger(__name__)
@@ -431,24 +432,21 @@ class Evaluation:
         return pd.Series(index=bin_vals, data=bin_data, name=self.target)
 
     def _process_mbe(self, data: pd.DataFrame) -> pd.Series:
-        data = data.groupby(self.group)
-        data = data.mean()
+        data = data.groupby(self.group).mean()
         return data[self.target]
 
     def _process_mae(self, data: pd.DataFrame) -> pd.Series:
         data[self.target] = data[self.target].abs()
-        data = data.groupby(self.group)
-        data = data.mean()
+        data = data.groupby(self.group).mean()
         return data[self.target]
 
     def _process_rmse(self, data: pd.DataFrame) -> pd.Series:
         data[self.target] = (data[self.target] ** 2)
-        data = data.groupby(self.group)
-        data = data.mean() ** .5
-        return data[self.target]
+        data = data.groupby(self.group).mean()
+        return data[self.target].apply(lambda d: sqrt(d))
 
     def _summarize(self, data: pd.Series) -> float:
-        return getattr(self, '_summarize_{method}'.format(method=self.summary))(data)
+        return getattr(self, f'_summarize_{self.summary}')(data)
 
     @staticmethod
     def _summarize_mbe(data: pd.Series) -> float:
@@ -460,19 +458,19 @@ class Evaluation:
 
     @staticmethod
     def _summarize_rmse(data: pd.Series) -> float:
-        return (data ** 2).mean() ** .5
+        return sqrt((data ** 2).mean())
 
     @staticmethod
     def _summarize_weight_by_group(data: pd.Series) -> float:
-        group_max = data.idxmax()
+        group_max = data.index.max()
         group_scaling = np.array([(group_max - i)/group_max for i in data.index])
         group_weight = group_scaling/group_scaling.sum()
-        return ((data ** 2) * group_weight).sum() ** .5
+        return sqrt(((data ** 2) * group_weight).sum())
 
     @staticmethod
     def _summarize_weight_by_bins(data: pd.Series) -> float:
         bins_weight = data/data.sum()
-        return ((data.index ** 2) * bins_weight).sum() ** .5
+        return sqrt(((data.index ** 2) * bins_weight).sum())
 
     @staticmethod
     def _summarize_fullest_bin(data: pd.Series) -> float | pd.Index:
