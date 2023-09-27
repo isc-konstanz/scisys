@@ -5,73 +5,173 @@
 
 
 """
+from __future__ import annotations
+
 import os
 import logging
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 
 logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARN)
 logging.getLogger('matplotlib').setLevel(logging.WARN)
 logger = logging.getLogger(__name__)
 
+show = False
+
+COLORS = [
+    '#004F9E',
+    '#FFB800'
+]
+
 INCH = 2.54
 WIDTH = 32/INCH
 HEIGHT = 9/INCH
 
 
-def print_lineplot(data, index, column, file,
-                   title='', xlabel='', ylabel='Error [W]', color='#004F9E', **kwargs) -> None:
+# noinspection PyDefaultArgument, SpellCheckingInspection
+def line(x: pd.Series | str,
+         y: pd.DataFrame | pd.Series | str,
+         data: pd.DataFrame = None,
+         title: str = '',
+         xlabel: str = '',
+         ylabel: str = 'Error [W]',
+         color: str = COLORS,
+         file: str = None,
+         **kwargs) -> None:
+
     plt.figure(figsize=[WIDTH, HEIGHT], dpi=120, tight_layout=True)
+
     color_num = max(len(data.columns) - 1, 1)
-    colors = sns.dark_palette(color, n_colors=color_num, reverse=True)
-    plot = sns.lineplot(x=index, y=column, ci='sd',  # errorbar='sd',
+    colors = sns.color_palette(color, n_colors=color_num)
+    plot = sns.lineplot(x=x,
+                        y=y,
                         data=data,
                         palette=colors,
+                        errorbar='sd',  # err_style="band", estimator=np.median,
                         **kwargs)
+
+    if isinstance(x, str) and (x == 'hour' or x == 'horizon'):
+        index_unique = data[x].astype(int).unique()
+        index_unique.sort()
+        plot.set_xticks(index_unique, labels=index_unique)
+
     plot.set(xlabel=xlabel, ylabel=ylabel, title=title)
-    fig = plot.figure
-    fig.savefig(file)
-    plt.close(fig)
+
+    if show:
+        plot.show()
+    if file is not None:
+        plot.figure.savefig(file)
+
+    plt.close(plot.figure)
+    plt.clf()
 
 
-def print_barplot(data, index, column, file,
-                  title='', xlabel='', ylabel='Error [W]', color='#004F9E', **kwargs) -> None:
+# noinspection PyDefaultArgument, SpellCheckingInspection
+def bars(x: pd.Series | str,
+         y: pd.DataFrame | pd.Series | str,
+         data: pd.DataFrame = None,
+         title: str = '',
+         xlabel: str = '',
+         ylabel: str = 'Error [W]',
+         color: str = COLORS,
+         file: str = None,
+         **kwargs) -> None:
+
     plt.figure(figsize=[WIDTH, HEIGHT], dpi=120, tight_layout=True)
+
     color_num = max(len(data.columns) - 1, 1)
-    colors = sns.dark_palette(color, n_colors=color_num, reverse=True)
-    plot = sns.barplot(x=index, y=column, ci='sd',  # errorbar='sd',
+    colors = sns.color_palette(color, n_colors=color_num)
+    plot = sns.barplot(x=x,
+                       y=y,
                        data=data,
                        palette=colors,
+                       errorbar='sd',  # ci='sd',
                        **kwargs)
-    if len(np.unique(index)) > 24:
+
+    if len(np.unique(x)) > 24:
         plot.xaxis.set_tick_params(rotation=45)
+
     plot.set(xlabel=xlabel, ylabel=ylabel, title=title)
-    fig = plot.figure
-    fig.savefig(file)
-    plt.close(fig)
+
+    if show:
+        plot.show()
+    if file is not None:
+        plot.figure.savefig(file)
+
+    plt.close(plot.figure)
+    plt.clf()
 
 
-def print_boxplot(data, index, column, file,
-                  title='', xlabel='', ylabel='Error [W]', color='#004F9E', **kwargs) -> None:
+# noinspection PyDefaultArgument, SpellCheckingInspection
+def quartiles(x: pd.Series | str,
+              y: pd.DataFrame | pd.Series | str,
+              data: pd.DataFrame = None,
+              title: str = '',
+              xlabel: str = '',
+              ylabel: str = 'Error [W]',
+              color: str = COLORS,
+              method: str = 'bar',
+              file: str = None,
+              **kwargs) -> None:
+
     plt.figure(figsize=[WIDTH, HEIGHT], dpi=120, tight_layout=True)
-    fliers = dict(marker='o', markersize=3, markerfacecolor='none', markeredgecolor='lightgrey')
+
     color_num = max(len(data.columns) - 1, 1)
-    colors = sns.light_palette(color, n_colors=color_num, reverse=True)
-    plot = sns.boxplot(x=index, y=column,
-                       data=data,
-                       palette=colors,
-                       flierprops=fliers,  # showfliers=False,
-                       **kwargs)
+    colors = sns.color_palette(color, n_colors=color_num)
+
+    if method in ['bar', 'bars']:
+        fliers = dict(marker='o', markersize=3, markerfacecolor='none', markeredgecolor='lightgrey')
+        plot = sns.boxplot(x=x,
+                           y=y,
+                           data=data,
+                           palette=colors,
+                           flierprops=fliers,
+                           # showfliers=False,
+                           **kwargs)
+
+        if (isinstance(x, str) and len(data[x]) > 24) or len(np.unique(x) > 24):
+            plot.xaxis.set_tick_params(rotation=45)
+
+    elif method == 'line':
+        stats = data.groupby([x]).describe()
+        index_values = stats.index
+        index_unique = index_values.astype(int).unique().values
+        index_unique.sort()
+
+        medians = stats[(y, '50%')]
+        quartile1 = stats[(y, '25%')]
+        quartile3 = stats[(y, '75%')]
+
+        plot = sns.lineplot(x=index_values,
+                            y=medians,
+                            palette=colors)
+        plot.fill_between(index_values, quartile1, quartile3, alpha=0.3)
+        plot.set_xticks(index_unique, labels=index_unique)
+    else:
+        logger.error(f'Invalid boxplot method "{method}"')
+        return
+
     plot.set(xlabel=xlabel, ylabel=ylabel, title=title)
-    fig = plot.figure
-    fig.savefig(file)
-    plt.close(fig)
+
+    if show:
+        plot.show()
+    if file is not None:
+        plot.figure.savefig(file)
+
+    plt.close(plot.figure)
+    plt.clf()
 
 
-def print_histograms(data, bins=100, path=''):
-    for column in data.columns:  # create 100 equal space bin values per column.
+def histograms(data: pd.DataFrame,
+               bins: int = 100,
+               path: str = '') -> None:
+
+    for column in data.columns:
+        plt.figure(figsize=[WIDTH, HEIGHT], dpi=120, tight_layout=True)
+
+        # Create equal space bin values per column
         bin_data = []
         bin_domain = data[column].max() - data[column].min()
         bin_step = bin_domain / bins
@@ -105,5 +205,8 @@ def print_histograms(data, bins=100, path=''):
 
         plt.title(r'Histogram of '+column)
         plt.savefig(path_file)
+
+        if show:
+            plt.show()
         plt.close()
         plt.clf()

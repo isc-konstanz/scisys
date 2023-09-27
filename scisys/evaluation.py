@@ -15,7 +15,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-import scisys.io as io
+from scisys.io import csv, excel, plot
 # noinspection PyProtectedMember
 from corsys.io._var import rename
 from corsys import Settings, Configurations
@@ -107,7 +107,7 @@ class Evaluations(Sequence):
                   .drop('Durations [min]', axis='columns', level=0, errors='ignore').empty:
             return
 
-        io.write_excel(summary, evaluations, self._evaluation_dir)
+        excel.write(summary, evaluations, self._evaluation_dir)
 
     def _get_valid(self, results: Results) -> List[Evaluation]:
         return [e for e in self._evaluations if e.is_valid(results)]
@@ -348,11 +348,11 @@ class Evaluation:
         if not os.path.isdir(plot_dir):
             os.makedirs(plot_dir, exist_ok=True)
 
-        for plot in self.plot:
+        for plot_type in self.plot:
             plot_title = '{0} {1}'.format(self.header, self.name)
-            plot_file = os.path.join(plot_dir, '{0}_{1}.png'.format(plot_name, plot))
-            plot_args = {'xlabel': rename(self.group), 'title': plot_title}
-            if plot == 'line':
+            plot_file = os.path.join(plot_dir, '{0}_{1}.png'.format(plot_name, plot_type))
+            plot_args = {'xlabel': rename(self.group), 'title': plot_title, 'file': plot_file}
+            if plot_type == 'line':
                 plot_args['hue'] = 'Results'
                 plot_args['style'] = 'Results'
                 plot_args['ylabel'] = 'Power [W]'
@@ -361,27 +361,46 @@ class Evaluation:
                     self._target+'_ref': 'Reference'
                 })
                 plot_data = plot_data[[self.group, 'Prediction', 'Reference']]
-                plot_melt = pd.melt(plot_data, self.group, value_name='values', var_name='Results')
-                io.print_lineplot(plot_melt, self.group, 'values', plot_file, **plot_args)
-            elif plot == 'bar':
+                plot_melt = plot_data.melt(id_vars=self.group, var_name='Results')
+
+                plot.line(self.group, 'value', plot_melt, **plot_args)
+
+            elif plot_type == 'bar':
+                # def divide_by_max(d):
+                #     maximum = data.loc[d.index, f'{self._target}_ref'].max()
+                #     return (d / maximum) * 100 if maximum > 0 else 0
+
                 if self.group_bins and self.group_bins > 1:
                     if self._group == 'histogram':
                         plot_args['ylabel'] = 'Occurrences'
                         plot_args['xlabel'] = 'Error [W]'
                     plot_data = evaluation.to_frame()
                     plot_index = evaluation.index.values.round(2)
-                    io.print_barplot(plot_data, plot_index, self.target, plot_file, **plot_args)
+                    plot.bars(plot_index, self.target, plot_data, **plot_args)
+
                 else:
+                    del plot_args['file']
                     plot_args['showfliers'] = False
+                    plot_file = os.path.join(plot_dir, plot_name+'_quartiles_{0}.png')
                     plot_data = data[[self.group, self.target]]
-                    io.print_boxplot(plot_data, self.group, self.target, plot_file, **plot_args)
+
+                    plot.quartiles(self.group, self.target, plot_data,
+                                   method='bars', file=plot_file.format('bar'), **plot_args)
+
+                    plot.quartiles(self.group, self.target, plot_data,
+                                   method='line', file=plot_file.format('line'), **plot_args)
+
+                    # plot_args['ylabel'] = 'Error [%]'
+                    # plot_file = os.path.join(plot_dir, f'{plot_name}_quartiles_norm.png')
+                    # plot_data.loc[:, self.target] = plot_data.groupby(self.group).transform(divide_by_max)
+                    # io.print_boxplot(plot_data, self.group, self.target, plot_file, **plot_args)
 
     def _select(self, results: Results) -> pd.DataFrame:
         data = deepcopy(results.data)
 
         columns = self.columns
         if 'hour' in columns:
-            data['hour'] = data.index.hour
+            data['hour'] = data.index.hour + data.index.minute/60
         if 'day_of_week' in columns:
             data['day_of_week'] = data.index.day_of_week
         if 'day_of_year' in columns:

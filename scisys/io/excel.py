@@ -10,6 +10,7 @@ import logging
 import warnings
 import pandas as pd
 
+from typing import Dict
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Border, Font, Side
 from tables import NaturalNameWarning
@@ -19,7 +20,12 @@ warnings.filterwarnings('ignore', category=NaturalNameWarning)
 logger = logging.getLogger(__name__)
 
 
-def write_excel(summary, data_frames, dir: str = 'data', file: str = 'summary.xlsx'):
+# noinspection PyShadowingBuiltins
+def write(summary: pd.DataFrame,
+          data: Dict[str, pd.DataFrame],
+          dir: str = 'data',
+          file: str = 'summary.xlsx') -> None:
+
     border_side = Side(border_style=None)
     border = Border(top=border_side,
                     right=border_side,
@@ -41,11 +47,11 @@ def write_excel(summary, data_frames, dir: str = 'data', file: str = 'summary.xl
         summary.to_excel(summary_writer, sheet_name='Summary', float_format="%.2f")  # , encoding='utf-8-sig')
         summary_book = summary_writer.book
 
-        for data_key, data in data_frames.items():
-            data.to_excel(summary_writer, sheet_name=data_key)  # , encoding='utf-8-sig')
+        for data_key, data_frame in data.items():
+            data_frame.to_excel(summary_writer, sheet_name=data_key)  # , encoding='utf-8-sig')
             data_sheet = summary_book[data_key]
             for column in range(1, len(data_sheet[1])):
-                data_column_width = data.iloc[:, column - 1].apply(lambda s: len(str(s))).max()
+                data_column_width = data_frame.iloc[:, column - 1].apply(lambda s: len(str(s))).max()
                 data_column_width = max(data_column_width, len(str(data_sheet[1][column].value)))
                 data_sheet.column_dimensions[get_column_letter(column + 1)].width = data_column_width + 2
 
@@ -55,7 +61,7 @@ def write_excel(summary, data_frames, dir: str = 'data', file: str = 'summary.xl
                 header_len = summary.columns.nlevels
                 data_sheet.delete_rows(3, 1)
             else:
-                header_len = data_frames[data_sheet.title].columns.nlevels
+                header_len = data[data_sheet.title].columns.nlevels
                 if header_len > 1:
                     data_sheet[2][0].value = data_sheet[3][0].value
                     data_sheet.delete_rows(3, 1)
