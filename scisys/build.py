@@ -78,8 +78,9 @@ def build(configs: Configurations,
             end = data.index[-1]
         data = data[(data.index >= start) &
                     (data.index <= end)]
-        if data.index.tzinfo is not None and data.index.tzinfo.utcoffset(data.index) is not None:
-            data = data.tz_convert(database.timezone)
+        if hasattr(data.index, 'tzinfo') and data.index.tzinfo is not None:
+            if data.index.tzinfo != database.timezone:
+                data.index = data.index.tz_convert(database.timezone)
 
         database.write(data, split_data=split, rename=rename, **kwargs)
 
