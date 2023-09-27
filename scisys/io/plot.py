@@ -6,6 +6,7 @@
 
 """
 from __future__ import annotations
+from typing import List
 
 import os
 import logging
@@ -37,7 +38,7 @@ def line(x: pd.Series | str,
          title: str = '',
          xlabel: str = '',
          ylabel: str = 'Error [W]',
-         color: str = COLORS,
+         color: List[str] = COLORS,
          file: str = None,
          **kwargs) -> None:
 
@@ -75,7 +76,7 @@ def bars(x: pd.Series | str,
          title: str = '',
          xlabel: str = '',
          ylabel: str = 'Error [W]',
-         color: str = COLORS,
+         color: List[str] = COLORS,
          file: str = None,
          **kwargs) -> None:
 
@@ -90,7 +91,7 @@ def bars(x: pd.Series | str,
                        errorbar='sd',  # ci='sd',
                        **kwargs)
 
-    if len(np.unique(x)) > 24:
+    if (not isinstance(x, str) and len(np.unique(x) > 24)) or len(data[x]) > 24:
         plot.xaxis.set_tick_params(rotation=45)
 
     plot.set(xlabel=xlabel, ylabel=ylabel, title=title)
@@ -111,7 +112,7 @@ def quartiles(x: pd.Series | str,
               title: str = '',
               xlabel: str = '',
               ylabel: str = 'Error [W]',
-              color: str = COLORS,
+              color: List[str] = COLORS,
               method: str = 'bar',
               file: str = None,
               **kwargs) -> None:
@@ -131,7 +132,7 @@ def quartiles(x: pd.Series | str,
                            # showfliers=False,
                            **kwargs)
 
-        if (isinstance(x, str) and len(data[x]) > 24) or len(np.unique(x) > 24):
+        if (not isinstance(x, str) and len(np.unique(x) > 24)) or len(data[x]) > 24:
             plot.xaxis.set_tick_params(rotation=45)
 
     elif method == 'line':
@@ -146,7 +147,7 @@ def quartiles(x: pd.Series | str,
 
         plot = sns.lineplot(x=index_values,
                             y=medians,
-                            palette=colors)
+                            color=colors[0])
         plot.fill_between(index_values, quartile1, quartile3, alpha=0.3)
         plot.set_xticks(index_unique, labels=index_unique)
     else:

@@ -15,10 +15,10 @@ import logging
 import numpy as np
 import pandas as pd
 
-from scisys.io import csv, excel, plot
 # noinspection PyProtectedMember
 from corsys.io._var import rename
 from corsys import Settings, Configurations
+from scisys.io import excel, plot
 from copy import deepcopy
 from math import sqrt
 from .results import Results
@@ -387,8 +387,9 @@ class Evaluation:
                     plot.quartiles(self.group, self.target, plot_data,
                                    method='bars', file=plot_file.format('bar'), **plot_args)
 
-                    plot.quartiles(self.group, self.target, plot_data,
-                                   method='line', file=plot_file.format('line'), **plot_args)
+                    if len(data.groupby([self.group])) > 24:
+                        plot.quartiles(self.group, self.target, plot_data,
+                                       method='line', file=plot_file.format('line'), **plot_args)
 
                     # plot_args['ylabel'] = 'Error [%]'
                     # plot_file = os.path.join(plot_dir, f'{plot_name}_quartiles_norm.png')
