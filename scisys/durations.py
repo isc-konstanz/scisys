@@ -51,12 +51,8 @@ class Durations(Mapping):
     def start(self, key: str) -> None:
         if key not in self._durations:
             self._durations[key] = {}
-        if 'minutes' not in self._durations[key]:
-            self._durations[key]['minutes'] = 0
-        if 'end' in self._durations[key]:
-            del self._durations[key]['end']
-
-        self._durations[key]['start'] = dt.datetime.now()
+        if 'start' not in self._durations[key]:
+            self._durations[key]['start'] = dt.datetime.now()
 
     def stop(self, key: str = None) -> None:
         if key is None:
@@ -72,12 +68,12 @@ class Durations(Mapping):
             raise ValueError("No duration found for key: \"{}\"".format(key))
         if 'start' not in self._durations[key]:
             raise ValueError("Timer for key \"{}\" not started yet".format(key))
+        if 'end' not in self._durations[key]:
+            self._durations[key]['end'] = dt.datetime.now()
 
-        self._durations[key]['end'] = dt.datetime.now()
-
-        minutes = self._durations[key]['minutes'] if 'minutes' in self._durations[key] else 0
-        minutes += round((self._durations[key]['end'] - self._durations[key]['start']).total_seconds() / 60.0, 6)
-        self._durations[key]['minutes'] = minutes
+            minutes = self._durations[key]['minutes'] if 'minutes' in self._durations[key] else 0
+            minutes += round((self._durations[key]['end'] - self._durations[key]['start']).total_seconds() / 60.0, 6)
+            self._durations[key]['minutes'] = minutes
 
     def _write(self) -> None:
         with open(self._file, 'w', encoding='utf-8') as f:
