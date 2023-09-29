@@ -44,11 +44,11 @@ def write(summary: pd.DataFrame,
         os.makedirs(summary_dir, exist_ok=True)
 
     with pd.ExcelWriter(summary_path, engine='openpyxl') as summary_writer:
-        summary.to_excel(summary_writer, sheet_name='Summary', float_format="%.2f")  # , encoding='utf-8-sig')
+        summary.to_excel(summary_writer, sheet_name='Summary', float_format="%.2f")  # , encoding=encoding)
         summary_book = summary_writer.book
 
         for data_key, data_frame in data.items():
-            data_frame.to_excel(summary_writer, sheet_name=data_key)  # , encoding='utf-8-sig')
+            data_frame.to_excel(summary_writer, sheet_name=data_key)  # , encoding=encoding)
             data_sheet = summary_book[data_key]
             for column in range(1, len(data_sheet[1])):
                 data_column_width = data_frame.iloc[:, column - 1].apply(lambda s: len(str(s))).max()

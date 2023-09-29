@@ -17,6 +17,7 @@ import pandas as pd
 
 # noinspection PyProtectedMember
 from corsys.io._var import rename
+from corsys.tools import to_int
 from corsys import Settings, Configurations
 from scisys.io import excel, plot
 from copy import deepcopy
@@ -156,7 +157,7 @@ class Evaluation:
         self.metric = metric
         self.plot = plot
 
-        if 'interval' in kwargs and kwargs['interval'] > 1:
+        if 'interval' in kwargs and kwargs['interval'] is not None and to_int(kwargs['interval']) > 1:
             # Verify forecast horizon condition to be greater than execution interval
             horizon_min = kwargs['interval']/60
             for condition in self.condition:
@@ -344,7 +345,7 @@ class Evaluation:
             return
 
         plot_name = '{0}_{1}'.format(self._target.replace('_power', '').lower(), self.id)
-        plot_dir = os.path.join(results.system.configs.dirs.data, 'results', 'plots')
+        plot_dir = os.path.join(results.system.configs.dirs.data, 'plots')
         if not os.path.isdir(plot_dir):
             os.makedirs(plot_dir, exist_ok=True)
 
@@ -376,16 +377,15 @@ class Evaluation:
                         plot_args['xlabel'] = 'Error [W]'
                     plot_data = evaluation.to_frame()
                     plot_index = evaluation.index.values.round(2)
-                    plot.bars(plot_index, self.target, plot_data, **plot_args)
+                    plot.bar(plot_index, self.target, plot_data, **plot_args)
 
                 else:
                     del plot_args['file']
-                    plot_args['showfliers'] = False
                     plot_file = os.path.join(plot_dir, plot_name+'_quartiles_{0}.png')
                     plot_data = data[[self.group, self.target]]
 
                     plot.quartiles(self.group, self.target, plot_data,
-                                   method='bars', file=plot_file.format('bar'), **plot_args)
+                                   method='bars', file=plot_file.format('bar'), showfliers=False, **plot_args)
 
                     if len(data.groupby([self.group])) > 24:
                         plot.quartiles(self.group, self.target, plot_data,
