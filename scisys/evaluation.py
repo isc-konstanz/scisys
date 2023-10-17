@@ -212,7 +212,7 @@ class Evaluation:
 
     @property
     def header(self) -> str:
-        target = self._target.lower().replace('_power', '')
+        target = self._target.lower().replace('_power', '').replace('_energy', '')
         if target in TARGETS:
             return TARGETS[target]
         return target.title()
@@ -285,7 +285,9 @@ class Evaluation:
         if re.match('[^a-zA-Z0-9-_ ]+', summary):
             raise ValueError('An improper summary name was passed for evaluation {}'.format(summary))
 
-        whitelist = ['mbe',
+        whitelist = ['sum',
+                     'mean',
+                     'mbe',
                      'mae',
                      'rmse',
                      'weight_by_group',
@@ -308,7 +310,9 @@ class Evaluation:
         if re.match('[^a-zA-Z0-9-_ ]+', metric):
             raise ValueError('An improper metric name was passed for evaluation {}'.format(metric))
 
-        whitelist = ['mbe',
+        whitelist = ['sum',
+                     'mean',
+                     'mbe',
                      'mae',
                      'rmse']
 
@@ -353,10 +357,19 @@ class Evaluation:
             plot_title = '{0} {1}'.format(self.header, self.name)
             plot_file = os.path.join(plot_dir, '{0}_{1}.png'.format(plot_name, plot_type))
             plot_args = {'xlabel': rename(self.group), 'title': plot_title, 'file': plot_file}
+            if '_power' in self._target:
+                plot_args['ylabel'] = 'Error [W]'
+            elif '_energy' in self._target:
+                plot_args['ylabel'] = 'Error [kWh]'
+
             if plot_type == 'line':
                 plot_args['hue'] = 'Results'
                 plot_args['style'] = 'Results'
-                plot_args['ylabel'] = 'Power [W]'
+                if '_power' in self._target:
+                    plot_args['ylabel'] = 'Power [W]'
+                elif '_energy' in self._target:
+                    plot_args['ylabel'] = 'Energy [kWh]'
+
                 plot_data = data.rename(columns={
                     self._target:        'Prediction',
                     self._target+'_ref': 'Reference'
@@ -371,10 +384,14 @@ class Evaluation:
                 #     maximum = data.loc[d.index, f'{self._target}_ref'].max()
                 #     return (d / maximum) * 100 if maximum > 0 else 0
 
-                if self.group_bins and self.group_bins > 1:
+                if self.group_bins and self.group_bins > 1 or self.metric == 'sum':
                     if self._group == 'histogram':
                         plot_args['ylabel'] = 'Occurrences'
-                        plot_args['xlabel'] = 'Error [W]'
+                        if '_power' in self._target:
+                            plot_args['xlabel'] = 'Error [W]'
+                        elif '_energy' in self._target:
+                            plot_args['xlabel'] = 'Error [kWh]'
+
                     plot_data = evaluation.to_frame()
                     plot_index = evaluation.index.values.round(2)
                     plot.bar(plot_index, self.target, plot_data, **plot_args)
@@ -408,6 +425,8 @@ class Evaluation:
             data['day_of_year'] = data.index.day_of_year
         if 'month' in columns:
             data['month'] = data.index.month
+        if 'year' in columns:
+            data['year'] = data.index.year
 
         if self._target+'_est' in data.columns:
             logger.warning(f"Results datastore containing deprecated target name {self._target+'_est'}."
@@ -451,9 +470,16 @@ class Evaluation:
 
         return pd.Series(index=bin_vals, data=bin_data, name=self.target)
 
-    def _process_mbe(self, data: pd.DataFrame) -> pd.Series:
+    def _process_sum(self, data: pd.DataFrame) -> pd.Series:
+        data = data.groupby(self.group).sum()
+        return data[self.target]
+
+    def _process_mean(self, data: pd.DataFrame) -> pd.Series:
         data = data.groupby(self.group).mean()
         return data[self.target]
+
+    def _process_mbe(self, data: pd.DataFrame) -> pd.Series:
+        return self._process_mean(data)
 
     def _process_mae(self, data: pd.DataFrame) -> pd.Series:
         data[self.target] = data[self.target].abs()
@@ -467,6 +493,14 @@ class Evaluation:
 
     def _summarize(self, data: pd.Series) -> float:
         return getattr(self, f'_summarize_{self.summary}')(data)
+
+    @staticmethod
+    def _summarize_sum(data: pd.Series) -> float:
+        return data.sum()
+
+    @staticmethod
+    def _summarize_mean(data: pd.Series) -> float:
+        return data.mean()
 
     @staticmethod
     def _summarize_mbe(data: pd.Series) -> float:
@@ -503,6 +537,7 @@ class Evaluation:
                 ['hour',
                  'day_of_week',
                  'day_of_year',
-                 'month']:
+                 'month',
+                 'year']:
             return False
         return True
