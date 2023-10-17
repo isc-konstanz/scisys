@@ -10,7 +10,7 @@ import logging
 import warnings
 import pandas as pd
 
-from typing import Dict
+from typing import Optional, Dict
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Border, Font, Side
 from tables import NaturalNameWarning
@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 def write(summary: pd.DataFrame,
           data: Dict[str, pd.DataFrame],
           dir: str = 'data',
-          file: str = 'summary.xlsx') -> None:
+          file: str = 'summary.xlsx',
+          index: Optional[bool] = None) -> None:
+
+    if index is None and len(summary) == 1:
+        index = False
 
     border_side = Side(border_style=None)
     border = Border(top=border_side,
@@ -59,7 +63,11 @@ def write(summary: pd.DataFrame,
         for data_sheet in summary_book:
             if data_sheet.title == 'Summary':
                 header_len = summary.columns.nlevels
-                data_sheet.delete_rows(3, 1)
+                data_sheet.delete_rows(3)
+                if not index:
+                    data_sheet.delete_cols(1)
+                    for data_merged in data_sheet.merged_cells:
+                        data_merged.shift(col_shift=-1)
             else:
                 header_len = data[data_sheet.title].columns.nlevels
                 if header_len > 1:
