@@ -66,7 +66,7 @@ def process(system: System,
 
 
 def _get_parser() -> ArgumentParser:
-    from corsys import __version__
+    from scisys import __version__
 
     parser = ArgumentParser(description=__doc__, formatter_class=RawTextHelpFormatter)
     parser.add_argument('-v', '--version',
