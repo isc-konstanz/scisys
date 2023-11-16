@@ -15,7 +15,7 @@ import datetime as dt
 import inspect
 
 from argparse import ArgumentParser, RawTextHelpFormatter
-from corsys.tools import to_date, ceil_date, resample_data
+from corsys.tools import to_date, ceil_date, resample
 from corsys import Settings, System
 
 
@@ -61,7 +61,7 @@ def process(system: System,
     processed = process(data, resolution, **kwargs)
     database.write(processed, file=data_file + '_{}m.csv'.format(resolution))
     for resolution in [15, 60]:
-        resampled = resample_data(processed, resolution*60)
+        resampled = resample(processed, resolution * 60)
         database.write(resampled, file=data_file + '_{}m.csv'.format(resolution))
 
 

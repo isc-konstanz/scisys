@@ -12,16 +12,14 @@ import pytz as tz
 import numpy as np
 import pandas as pd
 import datetime as dt
-import warnings
 import logging
 
-from copy import deepcopy
 from dateutil.tz import tzoffset
 
-# noinspection PyProtectedMember
-from corsys.tools import _resample_series, to_date, ceil_date
 from corsys.system import System
 from corsys.cmpt import Photovoltaic
+from corsys.tools import resample, to_date, to_timedelta, ceil_date, floor_date
+from scisys.validate import find_nan
 
 logger = logging.getLogger(__name__)
 
@@ -303,45 +301,23 @@ def process(data: pd.DataFrame, resolution: int = 1, **kwargs) -> pd.DataFrame:
 
 
 def _process_series(data: pd.Series, resolution: int = 1, fill_gaps: bool = False, **kwargs) -> pd.Series:
+    name = data.name
     # Find measurement outages longer than the resolution
     # TODO: configure (dynamic) maximum logging interval and use for gap location
-    gaps = _locate_gaps(data, 1)
+    gaps = find_nan(data, 60)
 
     # Extend index to have a regular frequency
-    start_minute = data.index[0].minute
-    if start_minute > 0:
-        start_minute += resolution - start_minute % resolution
-    start_hour = data.index[0].hour
-    if start_minute > 59:
-        start_minute = 0
-        start_hour += 1
-    start = data.index[0].replace(hour=start_hour, minute=start_minute, second=0)
-
-    end_minute = data.index[-1].minute - (data.index[-1].minute % resolution)
-    end = data.index[-1].replace(minute=end_minute, second=59)
-
-    logger.debug('Processing data series "%s" from %s to %s', data.name, start, end)
-    timezone = data.index.tzinfo
-    index = pd.date_range(start=start, end=end, tz=timezone, freq='{}min'.format(resolution))
-    data_name = data.name
-    data = data.to_frame().combine_first(pd.DataFrame(index=index, columns=[data_name]))
-    data.index.name = 'time'
+    data = homogenize(data, resolution * 60).loc[:, name]
 
     # Drop rows with outages longer than the resolution
     for _, gap in gaps.iterrows():
         error = data[(data.index > gap['start']) & (data.index < gap['end'])]
         data = data.drop(error.index)
 
-    # Interpolate the values between the irregular data points and drop them afterwards,
-    # to receive a regular index that is sure to be continuous, in order to later expose
-    # remaining gaps in the data. Use the advanced Akima interpolator for best results
-    data = data.interpolate(method='akima').bfill()
-    data = _resample_series(data[data_name], resolution*60)
-
     if fill_gaps:
         data = _impute(data, gaps, **kwargs)
 
-    return data[start:end]
+    return data
 
 
 def _process_energy(energy: pd.Series) -> pd.Series:
@@ -371,56 +347,6 @@ def _process_power(energy: pd.DataFrame | pd.Series, filter: bool = True) -> pd.
                                name=data_power.name)
         data_power[abs(data_power < 0.1)] = 0
     return data_power.reindex(energy_index)
-
-
-def _process_gaps(data: pd.DataFrame | pd.Series, **kwargs) -> pd.DataFrame | pd.Series:
-    res = (data.index[1] - data.index[0]).total_seconds()/60
-    gaps = _locate_gaps(data, res)
-    data = _impute(data, gaps, **kwargs)
-
-    return data
-
-
-def _locate_gaps(data: pd.DataFrame | pd.Series, resolution) -> pd.DataFrame:
-    # Create DataFrame to hold info about each NaN block
-    gaps = pd.DataFrame()
-
-    data_nan = deepcopy(data).dropna()
-    if isinstance(data_nan, pd.Series):
-        data_nan = data_nan.to_frame()
-
-    # Tag all occurrences of NaN in the data with True
-    # (but not before first or after last actual entry)
-    # data_nan.loc[:, 'NaN'] = data_nan.isna().any(axis=1)
-    #
-    # # First row of consecutive region is a True preceded by a False in NaN data_nan
-    # gaps['start'] = data_nan.index[data_nan['NaN'] & ~data_nan['NaN'].shift(1).fillna(False)]
-    #
-    # # Last row of consecutive region is a False preceded by a True
-    # gaps['end'] = data_nan.index[data_nan['NaN'] & ~data_nan['NaN'].shift(-1).fillna(False)]
-
-    with warnings.catch_warnings():
-        warnings.simplefilter(action='ignore', category=FutureWarning)
-
-        # Find measurement outages longer than the resolution
-        index_delta = pd.Series(data_nan.index, index=data_nan.index)
-        index_delta = (index_delta - index_delta.shift(1))/np.timedelta64(1, 'm')
-        for index in index_delta.loc[index_delta > resolution].index:
-            gaps = gaps.append({'start': data_nan.index[data_nan.index.get_loc(index) - 1],
-                                'end': index}, ignore_index=True)
-
-    gaps = gaps.sort_values('end').reset_index()
-    gaps.drop('index', axis=1, inplace=True)
-    if gaps['start'].dt.tz is None:
-        gaps['start'] = gaps['start'].dt.tz_localize(data_nan.index.tzinfo)
-    if gaps['end'].dt.tz is None:
-        gaps['end'] = gaps['end'].dt.tz_localize(data_nan.index.tzinfo)
-
-    # How long is each region
-    gaps['span'] = gaps['end'] - gaps['start'] + dt.timedelta(minutes=resolution)
-    gaps['minutes'] = gaps['span'] / dt.timedelta(minutes=resolution)
-
-    return gaps[gaps['minutes'] > resolution]
 
 
 def _impute(data: pd.DataFrame | pd.Series,
@@ -493,3 +419,43 @@ def _impute_by_day(data: pd.DataFrame | pd.Series,
                        data_nan['start'], data_nan['end'])
 
     return data
+
+
+def homogenize(data: pd.DataFrame | pd.Series, resolution: int) -> pd.DataFrame:
+    homogeneous_data = []
+
+    resolution_str = f'{int(resolution)}s'
+
+    for column, series in (data if isinstance(data, pd.DataFrame) else data.to_frame()).items():
+        # start_minute = data.index[0].minute
+        # if start_minute > 0:
+        #     start_minute += resolution - start_minute % resolution
+        # start_hour = data.index[0].hour
+        # if start_minute > 59:
+        #     start_minute = 0
+        #     start_hour += 1
+        # start = data.index[0].replace(hour=start_hour, minute=start_minute, second=0, microsecond=0, nanosecond=0)
+        start = floor_date(series.index[0], freq=resolution_str)
+
+        # end_minute = data.index[-1].minute - (data.index[-1].minute % resolution)
+        # end = data.index[-1].replace(minute=end_minute, second=0, microsecond=0, nanosecond=0)
+        end = ceil_date(series.index[-1], freq=resolution_str) + to_timedelta(resolution_str)
+
+        timezone = series.index.tzinfo
+        homogeneous_index = pd.date_range(start=start, end=end, tz=timezone, freq=resolution_str)
+        homogeneous_series = series.combine_first(pd.Series(index=homogeneous_index, name=column))
+        homogeneous_series.index.name = data.index.name
+
+        if not homogeneous_series.empty and len(homogeneous_series) > 1:
+            # Interpolate the values between the irregular data points and drop them afterwards,
+            # to receive a regular index that is sure to be continuous, in order to later expose
+            # remaining gaps in the data. Use the advanced Akima interpolator for best results
+            # homogenized_series = homogeneous_series.interpolate(method='akima').ffill()
+            homogenized_series = homogeneous_series.interpolate().ffill()
+            homogenized_series = resample(homogenized_series, resolution)
+            homogeneous_data.append(homogenized_series)  # [homogeneous_index])
+
+    homogeneous_data = pd.concat(homogeneous_data, axis='index')
+    homogeneous_data = resample(homogeneous_data, resolution)
+
+    return homogeneous_data

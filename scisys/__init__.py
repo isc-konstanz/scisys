@@ -9,6 +9,8 @@ from ._version import __version__  # noqa: F401
 
 from scisys import io  # noqa: F401
 
+from scisys import validate  # noqa: F401
+
 from scisys.build import build  # noqa: F401
 
 from scisys import durations  # noqa: F401
