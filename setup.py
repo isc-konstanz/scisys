@@ -32,14 +32,11 @@ URL = 'https://github.com/isc-konstanz/scisys'
 INSTALL_REQUIRES = [
     'scipy >= 1.1',
     'tables >= 3.4',
-    'corsys >= 0.8'
+    'openpyxl >= 2.4',
+    'matplotlib >= 3',
+    'seaborn >= 0.9',
+    'corsys >= 0.8.4'
 ]
-
-EXTRAS_REQUIRE = {
-    'excel': ['openpyxl >= 2.4'],
-    'plot': ['matplotlib >= 3',
-             'seaborn >= 0.9']
-}
 
 SCRIPTS = ['bin/scisys']
 
@@ -61,7 +58,6 @@ setup(
     url=URL,
     packages=PACKAGES,
     install_requires=INSTALL_REQUIRES,
-    extras_require=EXTRAS_REQUIRE,
     scripts=SCRIPTS,
     **SETUPTOOLS_KWARGS
 )
