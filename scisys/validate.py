@@ -75,18 +75,20 @@ def find_nan(data: pd.DataFrame | pd.Series, resolution: int) -> pd.DataFrame:
     for index in index_delta.loc[index_delta > resolution].index:
         nan_blocks.append({'start': data.index[data.index.get_loc(index) - 1], 'end': index})
 
-    nan_blocks = pd.DataFrame(nan_blocks).sort_values('end').reset_index()
-    nan_blocks.drop('index', axis=1, inplace=True)
-    if nan_blocks['start'].dt.tz is None:
-        nan_blocks['start'] = nan_blocks['start'].dt.tz_localize(data.index.tzinfo)
-    if nan_blocks['end'].dt.tz is None:
-        nan_blocks['end'] = nan_blocks['end'].dt.tz_localize(data.index.tzinfo)
+    nan_blocks = pd.DataFrame(nan_blocks, columns=['start', 'end'])
+    if not nan_blocks.empty:
+        nan_blocks = nan_blocks.sort_values('end').reset_index().drop('index', axis='columns')
 
-    # How long is each region
-    nan_blocks['span'] = nan_blocks['end'] - nan_blocks['start']
-    nan_blocks['seconds'] = nan_blocks['span'] / pd.Timedelta(seconds=1)
-    nan_blocks = nan_blocks[nan_blocks['seconds'] > resolution]
-    nan_blocks.drop(columns=['span', 'seconds'], inplace=True)
+        if nan_blocks['start'].dt.tz is None:
+            nan_blocks['start'] = nan_blocks['start'].dt.tz_localize(data.index.tzinfo)
+        if nan_blocks['end'].dt.tz is None:
+            nan_blocks['end'] = nan_blocks['end'].dt.tz_localize(data.index.tzinfo)
+
+        # How long is each region
+        nan_blocks['span'] = nan_blocks['end'] - nan_blocks['start']
+        nan_blocks['seconds'] = nan_blocks['span'] / pd.Timedelta(seconds=1)
+        nan_blocks = nan_blocks[nan_blocks['seconds'] > resolution]
+        nan_blocks.drop(columns=['span', 'seconds'], inplace=True)
 
     # Add error identification for future reconstruction
     nan_blocks['type'] = 'nan'
