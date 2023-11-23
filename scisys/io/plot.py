@@ -6,7 +6,7 @@
 
 """
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, Literal, List, Tuple
 
 import os
 import logging
@@ -36,9 +36,9 @@ def line(x: Optional[pd.Series | str] = None,
          title: str = '',
          xlabel: str = '',
          ylabel: str = '',
-         xlim: tuple = None,
-         ylim: tuple = None,
-         grids: str = None,  # Either 'x', 'y' or 'both'
+         xlim: Tuple[float, float] = None,
+         ylim: Tuple[float, float] = None,
+         grids: Optional[Literal["both", "x", "y"]] = None,
          colors: List[str] = COLORS,
          palette: Optional[str] = None,
          hue: Optional[str] = None,
@@ -48,7 +48,7 @@ def line(x: Optional[pd.Series | str] = None,
          file: str = None,
          **kwargs) -> None:
 
-    plt.figure(figsize=[width/INCH, height/INCH], dpi=120, tight_layout=True)
+    plt.figure(figsize=(width/INCH, height/INCH), dpi=120, tight_layout=True)
 
     color_num = max(len(np.unique(data[hue])) if hue else len(data.columns) - 1, 1)
     if color_num > 1:
@@ -62,6 +62,7 @@ def line(x: Optional[pd.Series | str] = None,
     plot = sns.lineplot(x=x,
                         y=y,
                         data=data,
+                        errorbar=('pi', 50),
                         estimator=np.median,
                         **kwargs)
 
@@ -75,7 +76,6 @@ def line(x: Optional[pd.Series | str] = None,
 
     if xlim is not None:
         plt.xlim(xlim)
-
     if ylim is not None:
         plt.ylim(ylim)
 
@@ -98,7 +98,7 @@ def bar(x: Optional[pd.Index | pd.Series | str] = None,
         title: str = '',
         xlabel: str = '',
         ylabel: str = '',
-        bar_label_type: str = None,  # 'edge' or 'center'
+        label_type: Optional[Literal["edge", "center"]] = None,
         colors: List[str] = COLORS,
         palette: Optional[str] = None,
         hue: Optional[str] = None,
@@ -108,7 +108,7 @@ def bar(x: Optional[pd.Index | pd.Series | str] = None,
         file: str = None,
         **kwargs) -> None:
 
-    plt.figure(figsize=[width/INCH, height/INCH], dpi=120, tight_layout=True)
+    plt.figure(figsize=(width/INCH, height/INCH), dpi=120, tight_layout=True)
 
     color_num = max(len(np.unique(data[hue])) if hue else len(data.columns) - 1, 1)
     if color_num > 1:
@@ -128,8 +128,8 @@ def bar(x: Optional[pd.Index | pd.Series | str] = None,
 
     plt.box(on=False)
 
-    if bar_label_type is not None:
-        plot.bar_label(plot.containers[0], label_type=bar_label_type)
+    if label_type is not None:
+        plot.bar_label(plot.containers[0], label_type=label_type)
 
     if show:
         plt.show()
@@ -141,45 +141,52 @@ def bar(x: Optional[pd.Index | pd.Series | str] = None,
 
 
 def heatmap(data: pd.DataFrame,
-            x: str, x_value_steps: int, xlabel: str,
-            y: str, y_value_steps: int, ylabel: str,
+            x: str,
+            xsteps: int,
+            xlabel: str,
+            y: str,
+            ysteps: int,
+            ylabel: str,
             heatbar_label: str,
-            operator: str, operator_value: str = None,
-            file: str = None,
+            how: str,
+            how_value: str = None,
             show: bool = False,
+            file: str = None,
             **kwargs) -> None:
 
     x_value_list = list(np.arange(
-        x_value_steps * round(data[x].min() / x_value_steps) + x_value_steps,
-        x_value_steps * round(data[x].max() / x_value_steps) + x_value_steps + 1, x_value_steps))
+        xsteps * round(data[x].min() / xsteps) + xsteps,
+        xsteps * round(data[x].max() / xsteps) + xsteps + 1, xsteps)
+    )
     y_value_list = list(np.arange(
-        y_value_steps * round(data[y].min() / y_value_steps) - y_value_steps,
-        y_value_steps * round(data[y].max() / y_value_steps) + 1, y_value_steps))
+        ysteps * round(data[y].min() / ysteps) - ysteps,
+        ysteps * round(data[y].max() / ysteps) + 1, ysteps)
+    )
     y_value_list.sort(reverse=True)
 
+    y_data = data
     x_array = []
     value_array = []
-    y_data = data
 
     for y_value in y_value_list:
         x_data = y_data[y_data[y] >= y_value]
         for x_value in x_value_list:
             datapoints = x_data[x_data[x] <= x_value]
 
-            if operator == "datapoints":
+            if how == "datapoints":
                 x_array.append(len(datapoints))
 
-            if operator == "mean":
-                x_array.append(round(datapoints[operator_value].mean(), 2))
+            if how == "mean":
+                x_array.append(round(datapoints[how_value].mean(), 2))
 
-            if operator == "median":
-                x_array.append(round(datapoints[operator_value].median(), 2))
+            if how == "median":
+                x_array.append(round(datapoints[how_value].median(), 2))
 
-            if operator == "min":
-                x_array.append(round(datapoints[operator_value].min(), 2))
+            if how == "min":
+                x_array.append(round(datapoints[how_value].min(), 2))
 
-            if operator == "max":
-                x_array.append(round(datapoints[operator_value].max(), 2))
+            if how == "max":
+                x_array.append(round(datapoints[how_value].max(), 2))
 
             x_data = x_data[x_data[x] > x_value]
         y_data = data[data[y] < y_value]
@@ -244,7 +251,7 @@ def quartiles(x: Optional[pd.Series | str] = None,
               file: str = None,
               **kwargs) -> None:
 
-    plt.figure(figsize=[width/INCH, height/INCH], dpi=120, tight_layout=True)
+    plt.figure(figsize=(width/INCH, height/INCH), dpi=120, tight_layout=True)
 
     color_num = max(len(np.unique(data[hue])) if hue else len(data.columns) - 1, 1)
     if color_num > 1:
@@ -311,7 +318,7 @@ def histograms(data: pd.DataFrame,
                path: str = '') -> None:
 
     for column in data.columns:
-        plt.figure(figsize=[WIDTH, HEIGHT], dpi=120, tight_layout=True)
+        plt.figure(figsize=(WIDTH, HEIGHT), dpi=120, tight_layout=True)
 
         # Create equal space bin values per column
         bin_data = []
