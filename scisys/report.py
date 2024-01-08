@@ -25,6 +25,13 @@ class Report(Configurable):
                                                conf_dir=settings.dirs.conf,
                                                require=False))
 
+    @property
+    def enabled(self) -> bool:
+        if not self.configs.enabled or not self.configs.has_section(Configurations.GENERAL):
+            return False
+        # TODO: Indicate missing configs
+        return all(self.configs.has_option(Configurations.GENERAL, k) for k in ['title', 'project', 'author'])
+
     def __call__(self, results: List[Results]) -> None:
         if not self.enabled:
             return
@@ -34,28 +41,16 @@ class Report(Configurable):
             pdf = PdfWriter.read(result.system, self.configs,
                                  confidential=self.configs.get(Configurations.GENERAL, 'confidential', fallback=False))
 
-            pdf.add_cover(self.configs.get(Configurations.GENERAL, 'title'),
-                          self.configs.get(Configurations.GENERAL, 'project'),
-                          self.configs.get(Configurations.GENERAL, 'author'))
+            self.build(pdf, result)
+            self.save(pdf)
 
-            pdf.add_table_of_content()
+    def build(self, pdf, results: Results) -> None:
+        pdf.add_cover(self.configs.get(Configurations.GENERAL, 'title'),
+                      self.configs.get(Configurations.GENERAL, 'project'),
+                      self.configs.get(Configurations.GENERAL, 'author'))
 
-            pdf.add_header('Page 1 Header Test', level=1)
-            pdf.add_paragraph('Page 1 Content Test')
+        pdf.add_table_of_content()
 
-            pdf.add_header('Page 1 Subheader Test', level=2)
-            pdf.add_paragraph('Page 1 Subcontent Test')
-
-            pdf.add_page_break()
-
-            pdf.add_header('Page 2 Header Test')
-            pdf.add_paragraph('Page 2 Content Test')
-
-            pdf.save()
-
-    @property
-    def enabled(self) -> bool:
-        if not self.configs.enabled or not self.configs.has_section(Configurations.GENERAL):
-            return False
-        # TODO: Indicate missing configs
-        return all(self.configs.has_option(Configurations.GENERAL, k) for k in ['title', 'project', 'author'])
+    # noinspection PyMethodMayBeStatic
+    def save(self, pdf) -> None:
+        pdf.save()
