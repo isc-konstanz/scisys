@@ -460,7 +460,6 @@ def homogenize(data: pd.DataFrame | pd.Series, resolution: int) -> pd.DataFrame:
             homogenized_series = resample(homogenized_series, resolution)
             homogeneous_data.append(homogenized_series)  # [homogeneous_index])
 
-    homogeneous_data = pd.concat(homogeneous_data, axis='index')
-    homogeneous_data = resample(homogeneous_data, resolution)
-
-    return homogeneous_data
+    if len(homogeneous_data) == 0:
+        return pd.DataFrame(columns=data.columns)
+    return pd.concat(homogeneous_data, axis='columns')
