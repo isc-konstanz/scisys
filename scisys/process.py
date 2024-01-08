@@ -426,7 +426,10 @@ def homogenize(data: pd.DataFrame | pd.Series, resolution: int) -> pd.DataFrame:
 
     resolution_str = f'{int(resolution)}s'
 
-    for column, series in (data if isinstance(data, pd.DataFrame) else data.to_frame()).items():
+    if isinstance(data, pd.Series):
+        data = data.to_frame()
+
+    for column, series in data.items():
         # start_minute = data.index[0].minute
         # if start_minute > 0:
         #     start_minute += resolution - start_minute % resolution
@@ -439,7 +442,9 @@ def homogenize(data: pd.DataFrame | pd.Series, resolution: int) -> pd.DataFrame:
 
         # end_minute = data.index[-1].minute - (data.index[-1].minute % resolution)
         # end = data.index[-1].replace(minute=end_minute, second=0, microsecond=0, nanosecond=0)
-        end = ceil_date(series.index[-1], freq=resolution_str) + to_timedelta(resolution_str)
+        end = ceil_date(series.index[-1], freq=resolution_str)
+        if floor_date(end, freq=resolution_str) < series.index[-1]:
+            end += to_timedelta(resolution_str)
 
         timezone = series.index.tzinfo
         homogeneous_index = pd.date_range(start=start, end=end, tz=timezone, freq=resolution_str)
