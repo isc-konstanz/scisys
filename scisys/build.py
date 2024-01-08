@@ -36,10 +36,13 @@ def build(configs: Configurations,
     start = to_date(start, timezone=database.timezone)
     end = to_date(end, timezone=database.timezone)
     end = ceil_date(end)
-    if start is None and end is None and 'year' in buildargs:
-        from dateutil.relativedelta import relativedelta
-        start = pd.Timestamp(to_int(buildargs.pop('year')), 1, 1).tz_localize(database.timezone)
-        end = start + relativedelta(years=1) - dt.timedelta(seconds=1)
+    if start is None and end is None:
+        if 'year' in buildargs:
+            from dateutil.relativedelta import relativedelta
+            start = pd.Timestamp(to_int(buildargs.pop('year')), 1, 1).tz_localize(database.timezone)
+            end = start + relativedelta(years=1) - dt.timedelta(seconds=1)
+        else:
+            return None
 
     buildargs['start'] = start
     buildargs['end'] = end

@@ -120,7 +120,10 @@ class Evaluation:
     def read(cls, settings: Settings) -> Evaluations:
         interval = settings.getint(Configurations.GENERAL, 'interval', fallback=None)
         evaluations = []
-        evaluation_configs = Configurations('evaluations.cfg', require=False)
+        evaluation_configs = Configurations.from_configs(settings,
+                                                         conf_file='evaluations.cfg',
+                                                         conf_dir=settings.dirs.conf,
+                                                         require=False)
         for evaluation in [s for s in evaluation_configs.sections() if s.lower() != 'general']:
             evaluation_args = dict(evaluation_configs[evaluation].items())
             evaluation_args['interval'] = interval

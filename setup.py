@@ -35,7 +35,7 @@ INSTALL_REQUIRES = [
     'openpyxl >= 2.4',
     'matplotlib >= 3',
     'seaborn >= 0.9',
-    'corsys >= 0.8.4'
+    'corsys >= 0.8.5'
 ]
 
 EXTRAS_REQUIRE = {
