@@ -38,6 +38,10 @@ INSTALL_REQUIRES = [
     'corsys >= 0.8.4'
 ]
 
+EXTRAS_REQUIRE = {
+    'pdf': ['reportlab', 'svglib']
+}
+
 SCRIPTS = ['bin/scisys']
 
 PACKAGES = find_namespace_packages(include=['scisys*'])
@@ -58,6 +62,7 @@ setup(
     url=URL,
     packages=PACKAGES,
     install_requires=INSTALL_REQUIRES,
+    extras_require=EXTRAS_REQUIRE,
     scripts=SCRIPTS,
     **SETUPTOOLS_KWARGS
 )

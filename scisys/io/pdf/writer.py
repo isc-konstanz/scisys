@@ -1,110 +1,164 @@
-import pandas as pd
-from reportlab.pdfgen.canvas import Canvas
-from reportlab.platypus import *
-from reportlab.lib.units import mm
-from reportlab.lib import colors
-from reportlab.platypus import Paragraph
-from PIL import Image
-import datetime as dt
-import toml
+# -*- coding: utf-8 -*-
+"""
+    scisys.io.pdf.writer
+    ~~~~~~~~~~~~~~~~~~~~
+
+
+"""
+from __future__ import annotations
+
 import os
+import pandas as pd
+import datetime as dt
+
+from hashlib import sha1
+from reportlab.lib import colors
+from reportlab.lib.utils import Image
+from reportlab.lib.units import mm
+from reportlab.platypus.tableofcontents import TableOfContents
+from reportlab.platypus import NextPageTemplate, PageBreak, Spacer, Table, TableStyle, Paragraph
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from corsys import Configurable, Configurations
+from .template import PdfDocTemplate
+from .styles import PdfStyles
+
+DATE_FORMAT: str = "%d.%m.%Y"
 
 
-# Creating canvas and setting global variables #####################################################################
-class PDF:
-    def __init__(self, project_dir, pagesize,
-                 left_margin, right_margin, top_margin, bottom_margin,
-                 font_content, font_bold, fontsize_content, fontsize_table):
+class PdfWriter(Configurable):
 
-        self.project_dir = project_dir
+    SECTION = 'PDF'
 
-        with open(os.path.join(project_dir, "conf", "pdf_settings.cfg"), mode="rt") as config_file:
-            config = toml.load(config_file)
-            self.general_dict = config["General"]
-            self.pictures_dict = config["Pictures"]
-            self.pages_dict = config["Pages"]
-            self.appendix_dict = config["Appendix"]
+    # noinspection PyTypeChecker
+    @classmethod
+    def read(cls, system, configs: Configurations, conf_file: str = 'pdf.cfg', section: str = SECTION,
+             confidential: bool = False) -> PdfWriter:
+        config_args = {
+            'require': False
+        }
+        if configs.has_section(section):
+            config_args.update(configs.items(section))
 
-            self.table_of_content = []
+        sections = {s: configs.items(s) for s in configs.sections() if s.startswith(cls.SECTION)}
 
-            for page in config["Pages"]:
-                self.table_of_content.append(config["Pages"][page].replace("_", " ").title())
-            if len(self.appendix_dict) > 0:
-                self.table_of_content.append("Appendix")
+        # TODO: Verify usefulness of this section just for logo locations
+        if configs.has_section('Images'):
+            sections['Images'] = {k: v for k, v in configs['Images'].items() if k.startswith('logo_')}
 
-            self.table_of_content_appendix = []
+        configs = Configurations.from_configs(configs, conf_file, **config_args)
+        for section, config_params in sections.items():
+            config_section = section[len(cls.SECTION)+1:]
+            if not configs.has_section(config_section):
+                configs.add_section(config_section)
+            for key, val in config_params.items():
+                configs.set(config_section, key, val)
 
-            for page in config["Appendix"]:
-                self.table_of_content_appendix.append(config["Appendix"][page].replace("_", " ").title())
+        creation_date = configs.get(Configurations.GENERAL, 'date', fallback=dt.datetime.now().strftime(DATE_FORMAT))
+        filename = configs.get(Configurations.GENERAL, 'file', fallback=system.id)
+        filepath = os.path.join(system.configs.dirs.data, f"{filename}.pdf")
 
-        self.pagesize = pagesize
-        self.left_margin = left_margin
-        self.right_margin = right_margin
-        self.mid_page = (right_margin + left_margin) / 2
-        self.top_margin = top_margin
-        self.bottom_margin = bottom_margin
-        self.font_content = font_content
-        self.font_bold = font_bold
-        self.fontsize_content = fontsize_content
-        self.fontsize_table = fontsize_table
+        return cls(configs, filepath, creation_date, confidential)
 
-        if self.general_dict["date"] == "today":
-            self.general_dict["date"] = dt.date.today()
-        else:
-            self.general_dict["date"] = self.general_dict["date"]
-
-        self.pdf_path = os.path.join(project_dir, str(self.general_dict["date"]) + " " +
-                                     self.general_dict["title"] + " " +
-                                     self.general_dict["project"] + ".pdf")
-
-        self.canvas = Canvas(self.pdf_path, pagesize=pagesize)
-
+    def __init__(self, configs: Configurations, filename: str, creation_date: str, confidential: bool = False):
+        super().__init__(configs)
         try:
-            if os.path.isfile(self.pdf_path):
-                os.remove(self.pdf_path)
-
+            if os.path.isfile(filename):
+                os.remove(filename)
         except PermissionError:
-            self.pdf_path = os.path.join(project_dir, str(self.general_dict["date"]) + " " +
-                                         self.general_dict["title"] + " " +
-                                         self.general_dict["project"] + "(2).pdf")
-            self.canvas = Canvas(self.pdf_path, pagesize=pagesize)
+            filename = filename.replace('.pdf', '(2).pdf')
+        self._filename = filename
+        self._creation_date = creation_date
 
-        print("[PDFCreator] Initiating PDF " + self.general_dict["title"] + " for Project "
-              + self.general_dict["project"])
+        # TODO: Make a list of logos configurable
+        logo_cover = configs.get('Images', 'logo_cover', fallback=None)
+        logo_header = configs.get('Images', 'logo_header', fallback=None)
 
-    def draw_layout(self, logo_dir: str, logo: str, headline: str = "", explanation: str = ""):
+        self._styles = PdfStyles(configs)
+        self._document = PdfDocTemplate(self._styles, filename, creation_date,
+                                        self._img_dir, logo_cover, logo_header,
+                                        confidential)
+        self._header_level = [0] * len([s for s in self._styles.byName.keys() if s.startswith('Heading')])
+        self._content = []
+
+    def __configure__(self, configs: Configurations) -> None:
+        super().__configure__(configs)
+        self._img_dir = os.path.join(configs.dirs.lib, 'images')
+
+    def add_cover(self,
+                  title: str,
+                  subtitle: str,
+                  author: str):
         """
-        Draws a layout with logo, Header and Footer.
+        Creates a pre-defined Cover Sheet with Title, Project, Confidentiality,
+        Author and Date as defined in the config file
 
-        :param logo_dir: Path to the logo file directory.
-        :param logo: Name of the logo file.
-        :param headline: Headline, written in the Header
-        :param explanation: Sub-Headline, explaining the page content.
         :return:
         """
+        self._content.append(NextPageTemplate('Cover'))
 
-        print("[PDFCreator] Creating Page " + headline)
-        # Header
-        self.canvas.drawImage(os.path.join(logo_dir, logo),
-                              self.left_margin * mm, 280 * mm, width=11 * mm, height=11 * mm)
-        self.canvas.setFont(self.font_bold, 20)
-        self.canvas.setFillColorRGB(0.1, 0.3, 0.5)
-        self.canvas.drawCentredString(105 * mm, 282 * mm, headline)
-        self.canvas.setFont(self.font_content, self.fontsize_content)
-        self.canvas.drawCentredString(105 * mm, 275 * mm, explanation)
-        self.canvas.setFillColor("black")
-        self.canvas.setFont(self.font_content, 12)
-        self.canvas.drawCentredString(190 * mm, 282 * mm, str(self.general_dict["confidentiality"]))
+        # Center the title
+        title_paragraph = Paragraph(title, self._styles['Title'])
+        _, title_height = title_paragraph.wrap(self._document.width, self._document.height)
+        title_position = self._document.height/2 - title_height
 
-        # Footer
-        self.canvas.setStrokeColorRGB(0.5, 0.5, 0.5)
-        self.canvas.line(self.left_margin * mm, 15 * mm, self.right_margin * mm, 15 * mm)
-        self.canvas.setStrokeColor("black")
-        self.canvas.setFont(self.font_content, 12)
-        self.canvas.drawCentredString(105 * mm, 7 * mm,
-                                      self.general_dict["title"] + " " + self.general_dict["project"])
-        self.canvas.drawString(190 * mm, 7 * mm, str(self.canvas.getPageNumber()))
-        self.canvas.drawString(self.left_margin * mm, 7 * mm, str(self.general_dict["date"]))
+        self._content.append(Spacer(1, title_position))
+
+        self._content.append(title_paragraph)
+        self._content.append(Paragraph(subtitle, self._styles['Subtitle']))
+
+        author_paragraph = Paragraph(author, self._styles['Cover'])
+        _, author_height = author_paragraph.wrap(self._document.width, self._document.height)
+
+        # Author and date centered in lower quarter
+        self._content.append(Spacer(1, title_position/2 - author_height))
+
+        self._content.append(author_paragraph)
+
+        self._content.append(Spacer(1, 12))
+        self._content.append(Paragraph(self._creation_date, self._styles['Cover']))
+
+        self._content.append(NextPageTemplate('Normal'))
+        self._content.append(PageBreak())
+
+    def add_table_of_content(self):
+        table_of_content = TableOfContents(dotsMinLevel=0)
+        table_of_content.levelStyles = [
+            self._styles['TableOfContents']
+        ]
+        self._content.append(Paragraph('Table of Contents', self._styles['Heading3']))
+        self._content.append(table_of_content)
+        self._content.append(PageBreak())
+
+    def add_page_break(self):
+        self._content.append(PageBreak())
+
+    def add_paragraph(self, text: str, style: str = 'Normal'):
+        self._content.append(Paragraph(text, self._styles[style]))
+
+    def add_header(self, header: str, level: int = 1):
+        style = self._styles[f'Heading{level}']
+
+        # Create an autoincrement heading number
+        self._header_level[level - 1] += 1
+        self._header_level[level:] = [0] * (len(self._header_level) - level)
+        header_number = '.'.join(str(i) for i in self._header_level[:level])
+        if level == 1:
+            header_number += '.'
+
+        # TODO: Find better solution to mimic a tab for header numbers
+        while stringWidth(header_number, style.fontName, style.fontSize) < 10*mm:
+            header_number += '\xa0'
+
+        # Create a unique bookmark name
+        header_bookmark = sha1(f'{header_number} {header} {style.name}'.encode('utf-8')).hexdigest()
+
+        # Modify the paragraph text to include an anchor point with the bookmark
+        header = Paragraph(f'<a name="{header_bookmark}"/>{header_number} {header}', style)
+
+        # Store the bookmark name on the flowable so afterFlowable can see this
+        header._bookmarkName = header_bookmark
+
+        self._content.append(header)
 
     def insert_image(self, image_dir, image_file: str, x_cord: int, y_cord: int, width: int = None, height: int = None):
         """
@@ -154,7 +208,7 @@ class PDF:
         """
 
         if fontsize == 0:
-            fontsize = self.fontsize_content
+            fontsize = self.font_size_content
         if font == "":
             font = self.font_content
         text_configuration = self.canvas.beginText()
@@ -208,7 +262,7 @@ class PDF:
         """
 
         if fontsize == 0:
-            fontsize = self.fontsize_content
+            fontsize = self.font_size_content
         if font == "":
             font = self.font_content
         self.canvas.acroForm.textfield(text,
@@ -253,8 +307,7 @@ class PDF:
         :param textcolor: Color of the Headline. If none is passed, it's "black"
         :return:
         """
-
-        self.canvas.setFont(self.font_bold, self.fontsize_content + 2)
+        self.canvas.setFont(self.font_bold, self.font_size_content + 2)
         self.canvas.setFillColor(textcolor)
         self.canvas.drawString(self.left_margin * mm, y_cord * mm, text)
 
@@ -282,8 +335,8 @@ class PDF:
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), self.font_content),
             ('FONTNAME', (0, 0), (0, -1), self.font_bold),
-            ('FONTSIZE', (0, 0), (-1, -1), self.fontsize_table),
-            ('FONTSIZE', (0, 0), (0, 0), self.fontsize_table + 2),
+            ('FONTSIZE', (0, 0), (-1, -1), self.font_size_table),
+            ('FONTSIZE', (0, 0), (0, 0), self.font_size_table + 2),
             ('TEXTCOLOR', (0, 0), (-1, -1), textcolor),
             ('LINEBELOW', (0, 0), (-1, 0), 0.25, linecolor),
             ('ALIGNMENT', (1, 0), (-1, -1), 'CENTER')
@@ -297,64 +350,31 @@ class PDF:
         table.wrapOn(self.canvas, 0, 0)
         table.drawOn(self.canvas, x_cord * mm, y_cord * mm)
 
-    def create_cover_sheet(self):
-        """
-        Creates a pre-defined Cover Sheet with Title, Project, Confidentiality,
-        Author and Date as defined in the config file
-
-        :return:
-        """
-
-        self.canvas.drawImage(os.path.join("layout", self.pictures_dict["logo_cover"]), 10 * mm, 260 * mm,
-                              width=(293 / 8) * mm, height=(185 / 8) * mm)
-
-        self.canvas.setFont(self.font_bold, 24)
-        self.canvas.drawCentredString(105 * mm, 200 * mm, self.general_dict["title"])
-
-        self.canvas.setFont(self.font_bold, 22)
-        self.canvas.drawCentredString(105 * mm, 170 * mm, self.general_dict["project"])
-
-        self.canvas.setFont(self.font_bold, 18)
-        self.canvas.drawCentredString(105 * mm, 135 * mm, " - " + self.general_dict["confidentiality"] + " -")
-
-        self.canvas.setFont(self.font_bold, 16)
-        self.canvas.drawCentredString(105 * mm, 100 * mm, self.general_dict["author"])
-
-        self.canvas.setFont(self.font_content, 16)
-        self.canvas.drawCentredString(105 * mm, 70 * mm, str(self.general_dict["date"]))
-
-        self.canvas.showPage()
-
-    def savepdf(self, openpdf: bool = False):
+    # noinspection PyShadowingBuiltins
+    def save(self, open: bool = False):
         """
         Saves the current PDF.
 
-        :param openpdf: Opens the PDF in Standard PDF Viewer, if True.
+        :param open: Opens the PDF in Standard PDF Viewer, if True.
         :return:
         """
+        self._document.prepareBuild(self._content)
+        self._document.multiBuild(self._content)
+        if open:
+            os.startfile(self._filename)
 
-        print("[PDFCreator] Saving PDF to " + str(self.pdf_path))
-        self.canvas.save()
-
-        if openpdf:
-            os.startfile(self.pdf_path)
-
-    def convert_pdf_to_docx(self, opendocx: bool = False):
+    # noinspection PyUnresolvedReferences, PyPackageRequirements, PyShadowingBuiltins
+    def save_as_docx(self, open: bool = False):
         """
         Converts the saved PDF to docx with pdf2docx.
 
-        :param opendocx: Opens the docx in Word, if True.
+        :param open: Opens the docx in Word, if True.
         :return:
         """
+        filename = self._filename.replace('.pdf', '.docx')
 
-        from pdf2docx import parse
+        import pdf2docx as docx
+        docx.parse(filename)
 
-        parse(self.pdf_path,
-              os.path.join(self.project_dir, str(self.general_dict["date"]) + " " + self.general_dict["title"] + " " +
-                           self.general_dict["project"] + ".docx"))
-
-        if opendocx:
-            os.startfile(os.path.join(self.project_dir,
-                                      str(self.general_dict["date"]) + " " + self.general_dict["title"] + " " +
-                                      self.general_dict[
-                                          "project"] + ".docx"))
+        if open:
+            os.startfile(filename)
