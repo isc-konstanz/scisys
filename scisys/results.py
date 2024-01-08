@@ -36,8 +36,11 @@ class Results(MutableMapping):
         except DatabaseUnavailableException:
             self._database = None
 
-        self.data = pd.DataFrame()
         self.durations = Durations(system)
+
+        self.data = pd.DataFrame()
+        self.summary = {}
+        self.images = {}
 
         self.verbose = verbose
 
