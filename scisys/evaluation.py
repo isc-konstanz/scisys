@@ -124,6 +124,11 @@ class Evaluation:
                                                          conf_file='evaluations.cfg',
                                                          conf_dir=settings.dirs.conf,
                                                          require=False)
+
+        override_path = os.path.join(settings.dirs.data, 'evaluations.cfg')
+        if os.path.isfile(override_path):
+            evaluation_configs.read(override_path, encoding='utf-8')
+
         for evaluation in [s for s in evaluation_configs.sections() if s.lower() != 'general']:
             evaluation_args = dict(evaluation_configs[evaluation].items())
             evaluation_args['interval'] = interval
