@@ -20,6 +20,7 @@ from corsys.io._var import rename
 from corsys.tools import to_int
 from corsys import Settings, Configurations
 from scisys.io import excel, plot
+from contextlib import suppress
 from copy import deepcopy
 from math import sqrt
 from .results import Results
@@ -224,10 +225,21 @@ class Evaluation:
 
     @property
     def header(self) -> str:
-        target = self._target.lower().replace('_power', '').replace('_energy', '')
-        if target in TARGETS:
-            return TARGETS[target]
-        return target.title()
+        target = self._target.lower().split('_')
+        with suppress(ValueError, AttributeError):
+            target.remove('power')
+            target.remove('energy')
+        for t in target:
+            i = target.index(t)
+            if t in TARGETS:
+                t = TARGETS[t]
+            if len(t) <= 3:
+                t = t.upper()
+            else:
+                t = t.title()
+            target[i] = t
+
+        return ' '.join(target)
 
     @property
     def target(self):
