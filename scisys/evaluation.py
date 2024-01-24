@@ -20,6 +20,7 @@ from corsys.io._var import rename
 from corsys.tools import to_int
 from corsys import Settings, Configurations
 from scisys.io import excel, plot
+from contextlib import suppress
 from copy import deepcopy
 from math import sqrt
 from .results import Results
@@ -124,6 +125,11 @@ class Evaluation:
                                                          conf_file='evaluations.cfg',
                                                          conf_dir=settings.dirs.conf,
                                                          require=False)
+
+        override_path = os.path.join(settings.dirs.data, 'evaluations.cfg')
+        if os.path.isfile(override_path):
+            evaluation_configs.read(override_path, encoding='utf-8')
+
         for evaluation in [s for s in evaluation_configs.sections() if s.lower() != 'general']:
             evaluation_args = dict(evaluation_configs[evaluation].items())
             evaluation_args['interval'] = interval
@@ -176,9 +182,13 @@ class Evaluation:
         # Prepare the data to contain only necessary columns and rows
         data = self._select(results)
 
+        if np.isinf(data).values.any():
+            data_inf = data[np.isinf(data).any(axis='columns')]
+            data.drop(data_inf.index, inplace=True)
+            logger.warning(f"Results datastore contains {len(data_inf)} infinit values")
         if data.isna().values.any():
             data_nan = data[data.isna().any(axis='columns')]
-            data.dropna(how='any', inplace=True)
+            data.drop(data_nan.index, inplace=True)
             logger.warning(f"Results datastore contains {len(data_nan)} invalid values")
 
         evaluation = self._process(data)
@@ -215,10 +225,21 @@ class Evaluation:
 
     @property
     def header(self) -> str:
-        target = self._target.lower().replace('_power', '').replace('_energy', '')
-        if target in TARGETS:
-            return TARGETS[target]
-        return target.title()
+        target = self._target.lower().split('_')
+        with suppress(ValueError, AttributeError):
+            target.remove('power')
+            target.remove('energy')
+        for t in target:
+            i = target.index(t)
+            if t in TARGETS:
+                t = TARGETS[t]
+            if len(t) <= 3:
+                t = t.upper()
+            else:
+                t = t.title()
+            target[i] = t
+
+        return ' '.join(target)
 
     @property
     def target(self):
