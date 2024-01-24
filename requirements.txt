@@ -8,4 +8,4 @@ tables>=3.8.0,~=3.8
 openpyxl>=3.0.10,~=3.0
 matplotlib>=3.8.0,~=3.8
 seaborn>=0.12.2,~=0.12
-corsys>=0.8.5,~=0.8
+corsys>=0.8.6,~=0.8
