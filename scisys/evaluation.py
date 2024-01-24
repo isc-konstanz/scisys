@@ -181,9 +181,13 @@ class Evaluation:
         # Prepare the data to contain only necessary columns and rows
         data = self._select(results)
 
+        if np.isinf(data).values.any():
+            data_inf = data[np.isinf(data).any(axis='columns')]
+            data.drop(data_inf.index, inplace=True)
+            logger.warning(f"Results datastore contains {len(data_inf)} infinit values")
         if data.isna().values.any():
             data_nan = data[data.isna().any(axis='columns')]
-            data.dropna(how='any', inplace=True)
+            data.drop(data_nan.index, inplace=True)
             logger.warning(f"Results datastore contains {len(data_nan)} invalid values")
 
         evaluation = self._process(data)
