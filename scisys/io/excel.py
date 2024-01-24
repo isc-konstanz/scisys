@@ -27,8 +27,8 @@ def write(summary: pd.DataFrame,
           file: str = 'summary.xlsx',
           index: Optional[bool] = None) -> None:
 
-    if index is None and len(summary) == 1:
-        index = False
+    if index is None:
+        index = len(summary) > 1
 
     border_side = Side(border_style=None)
     border = Border(top=border_side,
