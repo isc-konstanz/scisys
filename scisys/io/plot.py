@@ -121,7 +121,8 @@ def bar(x: Optional[pd.Index | pd.Series | str] = None,
 
     plot = sns.barplot(x=x, y=y, data=data, **kwargs)
 
-    if (isinstance(x, str) and len(data[x]) > 24) or (isinstance(x, (pd.Index, pd.Series)) and len(np.unique(x)) > 24):
+    if (isinstance(x, str) and len(data[x]) > 24) or \
+            (isinstance(x, (pd.Index, pd.Series, np.ndarray)) and len(np.unique(x)) > 24):
         plot.xaxis.set_tick_params(rotation=45)
 
     plot.set(xlabel=xlabel, ylabel=ylabel, title=title)
